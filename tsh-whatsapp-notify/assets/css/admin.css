@@ -1,0 +1,741 @@
+/**
+ * TSH WhatsApp Notify — Admin Stylesheet
+ *
+ * Follows WordPress admin design language (WC-style) with a WhatsApp green accent.
+ * All selectors are scoped to .tsh-wa-* to avoid collisions.
+ *
+ * @package TSH\WhatsAppNotify
+ * @version 1.0.0
+ */
+
+/* ============================================================
+   CSS Custom Properties
+   ============================================================ */
+:root {
+	--tsh-wa-green:          #25D366;
+	--tsh-wa-green-dark:     #1da851;
+	--tsh-wa-green-light:    #d9f7e7;
+	--tsh-wa-blue:           #2271b1;
+	--tsh-wa-blue-light:     #dce6f5;
+	--tsh-wa-orange:         #d97706;
+	--tsh-wa-orange-light:   #fef3c7;
+	--tsh-wa-red:            #dc2626;
+	--tsh-wa-red-light:      #fee2e2;
+	--tsh-wa-purple:         #7c3aed;
+	--tsh-wa-purple-light:   #ede9fe;
+	--tsh-wa-grey:           #6b7280;
+	--tsh-wa-grey-light:     #f3f4f6;
+	--tsh-wa-border:         #c3c4c7;
+	--tsh-wa-bg:             #f0f0f1;
+	--tsh-wa-white:          #ffffff;
+	--tsh-wa-text:           #1d2327;
+	--tsh-wa-text-muted:     #50575e;
+	--tsh-wa-radius:         6px;
+	--tsh-wa-radius-lg:      10px;
+	--tsh-wa-shadow:         0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+	--tsh-wa-shadow-md:      0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
+	--tsh-wa-font:           -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+/* ============================================================
+   Layout wrapper
+   ============================================================ */
+.tsh-wa-wrap {
+	max-width: 1400px;
+	font-family: var(--tsh-wa-font);
+	color: var(--tsh-wa-text);
+}
+
+.tsh-wa-wrap h1,
+.tsh-wa-wrap h2,
+.tsh-wa-wrap h3 {
+	font-family: var(--tsh-wa-font);
+}
+
+/* ============================================================
+   Page header
+   ============================================================ */
+.tsh-wa-page-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 20px 0 16px;
+	margin-bottom: 8px;
+	border-bottom: 1px solid var(--tsh-wa-border);
+}
+
+.tsh-wa-page-header__inner {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.tsh-wa-page-header__inner h1 {
+	margin: 0;
+	padding: 0;
+	font-size: 22px;
+	font-weight: 600;
+	line-height: 1.3;
+}
+
+.tsh-wa-page-header__subtitle {
+	margin: 2px 0 0;
+	color: var(--tsh-wa-text-muted);
+	font-size: 13px;
+}
+
+.tsh-wa-logo {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+/* ============================================================
+   Summary cards grid
+   ============================================================ */
+.tsh-wa-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 16px;
+	margin: 20px 0;
+}
+
+.tsh-wa-card {
+	background: var(--tsh-wa-white);
+	border: 1px solid var(--tsh-wa-border);
+	border-radius: var(--tsh-wa-radius-lg);
+	padding: 20px;
+	display: flex;
+	gap: 16px;
+	box-shadow: var(--tsh-wa-shadow);
+	transition: box-shadow .15s ease;
+}
+
+.tsh-wa-card:hover {
+	box-shadow: var(--tsh-wa-shadow-md);
+}
+
+.tsh-wa-card__icon {
+	width: 48px;
+	height: 48px;
+	border-radius: var(--tsh-wa-radius);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.tsh-wa-card__icon .dashicons {
+	font-size: 22px;
+	width: 22px;
+	height: 22px;
+	color: var(--tsh-wa-white);
+}
+
+.tsh-wa-card__icon--blue   { background: var(--tsh-wa-blue); }
+.tsh-wa-card__icon--green  { background: var(--tsh-wa-green); }
+.tsh-wa-card__icon--orange { background: var(--tsh-wa-orange); }
+.tsh-wa-card__icon--red    { background: var(--tsh-wa-red); }
+.tsh-wa-card__icon--purple { background: var(--tsh-wa-purple); }
+.tsh-wa-card__icon--grey   { background: var(--tsh-wa-grey); }
+
+.tsh-wa-card__body {
+	min-width: 0;
+}
+
+.tsh-wa-card__title {
+	margin: 0 0 4px;
+	font-size: 12px;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: .5px;
+	color: var(--tsh-wa-text-muted);
+}
+
+.tsh-wa-card__value {
+	margin: 0 0 6px;
+	font-size: 26px;
+	font-weight: 700;
+	line-height: 1.1;
+	color: var(--tsh-wa-text);
+}
+
+.tsh-wa-card__meta {
+	margin: 0;
+	font-size: 12px;
+	color: var(--tsh-wa-text-muted);
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: center;
+}
+
+.tsh-wa-card__meta a {
+	color: var(--tsh-wa-blue);
+	text-decoration: none;
+}
+
+.tsh-wa-card__meta a:hover {
+	text-decoration: underline;
+}
+
+/* ============================================================
+   Panel
+   ============================================================ */
+.tsh-wa-panels {
+	display: grid;
+	grid-template-columns: 1fr 380px;
+	gap: 20px;
+	margin: 0 0 24px;
+}
+
+@media (max-width: 1200px) {
+	.tsh-wa-panels {
+		grid-template-columns: 1fr;
+	}
+}
+
+.tsh-wa-panel {
+	background: var(--tsh-wa-white);
+	border: 1px solid var(--tsh-wa-border);
+	border-radius: var(--tsh-wa-radius-lg);
+	box-shadow: var(--tsh-wa-shadow);
+	overflow: hidden;
+}
+
+.tsh-wa-panel--wide {
+	/* Used inside a panels grid to span 1 col; standalone it fills 100% */
+}
+
+.tsh-wa-panel__header {
+	padding: 14px 20px;
+	border-bottom: 1px solid var(--tsh-wa-border);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	background: var(--tsh-wa-grey-light);
+}
+
+.tsh-wa-panel__header h2 {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.tsh-wa-panel__link {
+	font-size: 13px;
+	color: var(--tsh-wa-blue);
+	text-decoration: none;
+}
+
+.tsh-wa-panel__link:hover {
+	text-decoration: underline;
+}
+
+.tsh-wa-panel__body {
+	padding: 16px 20px;
+}
+
+/* ============================================================
+   Badges
+   ============================================================ */
+.tsh-wa-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 8px;
+	border-radius: 100px;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.6;
+	white-space: nowrap;
+}
+
+.tsh-wa-badge--green  { background: var(--tsh-wa-green-light);  color: #065f46; }
+.tsh-wa-badge--blue   { background: var(--tsh-wa-blue-light);   color: #1e40af; }
+.tsh-wa-badge--orange { background: var(--tsh-wa-orange-light); color: #92400e; }
+.tsh-wa-badge--red    { background: var(--tsh-wa-red-light);    color: #991b1b; }
+.tsh-wa-badge--grey   { background: var(--tsh-wa-grey-light);   color: #374151; }
+.tsh-wa-badge--purple { background: var(--tsh-wa-purple-light); color: #4c1d95; }
+
+/* ============================================================
+   Log level badges
+   ============================================================ */
+.tsh-wa-level-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 7px;
+	border-radius: 4px;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: .5px;
+	text-transform: uppercase;
+}
+
+.tsh-wa-level-badge--success { background: var(--tsh-wa-green-light);  color: #065f46; }
+.tsh-wa-level-badge--info    { background: var(--tsh-wa-blue-light);   color: #1e40af; }
+.tsh-wa-level-badge--warning { background: var(--tsh-wa-orange-light); color: #92400e; }
+.tsh-wa-level-badge--error   { background: var(--tsh-wa-red-light);    color: #991b1b; }
+.tsh-wa-level-badge--debug   { background: var(--tsh-wa-grey-light);   color: #374151; }
+
+/* ============================================================
+   Tables
+   ============================================================ */
+.tsh-wa-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.tsh-wa-table thead th {
+	padding: 10px 12px;
+	text-align: left;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .4px;
+	color: var(--tsh-wa-text-muted);
+	border-bottom: 2px solid var(--tsh-wa-border);
+	background: var(--tsh-wa-grey-light);
+}
+
+.tsh-wa-table tbody td {
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--tsh-wa-border);
+	vertical-align: middle;
+}
+
+.tsh-wa-table tbody tr:last-child td {
+	border-bottom: none;
+}
+
+.tsh-wa-table tbody tr:hover {
+	background: #f9f9f9;
+}
+
+.tsh-wa-table code {
+	font-size: 11px;
+	background: var(--tsh-wa-grey-light);
+	padding: 2px 5px;
+	border-radius: 3px;
+	color: var(--tsh-wa-purple);
+}
+
+/* ============================================================
+   Health list
+   ============================================================ */
+.tsh-wa-health-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tsh-wa-health-list__item {
+	display: grid;
+	grid-template-columns: 20px 1fr auto;
+	grid-template-rows: auto auto;
+	column-gap: 10px;
+	align-items: center;
+	padding: 10px 0;
+	border-bottom: 1px solid var(--tsh-wa-border);
+}
+
+.tsh-wa-health-list__item:last-child {
+	border-bottom: none;
+}
+
+.tsh-wa-health-list__icon {
+	grid-row: 1 / 3;
+}
+
+.tsh-wa-health-list__icon .dashicons {
+	font-size: 18px;
+	width: 18px;
+	height: 18px;
+}
+
+.tsh-wa-health-list__item--ok      .dashicons { color: var(--tsh-wa-green); }
+.tsh-wa-health-list__item--warning .dashicons { color: var(--tsh-wa-orange); }
+.tsh-wa-health-list__item--error   .dashicons { color: var(--tsh-wa-red); }
+
+.tsh-wa-health-list__label {
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.tsh-wa-health-list__value {
+	font-size: 13px;
+	color: var(--tsh-wa-text-muted);
+	text-align: right;
+}
+
+.tsh-wa-health-list__note {
+	grid-column: 2 / 4;
+	font-size: 11px;
+	color: var(--tsh-wa-text-muted);
+	margin-top: 1px;
+	word-break: break-all;
+}
+
+/* ============================================================
+   Status / tab nav (queue / logs status filters)
+   ============================================================ */
+.tsh-wa-status-tabs {
+	margin: 16px 0 8px;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0;
+	border-bottom: 1px solid var(--tsh-wa-border);
+}
+
+.tsh-wa-status-tabs li a {
+	display: inline-block;
+	padding: 8px 14px;
+	font-size: 13px;
+	color: var(--tsh-wa-text-muted);
+	text-decoration: none;
+	border-bottom: 3px solid transparent;
+	margin-bottom: -1px;
+}
+
+.tsh-wa-status-tabs li a:hover {
+	color: var(--tsh-wa-blue);
+}
+
+.tsh-wa-status-tabs li a.current {
+	color: var(--tsh-wa-blue);
+	border-bottom-color: var(--tsh-wa-blue);
+	font-weight: 600;
+}
+
+.tsh-wa-status-tabs .count {
+	color: var(--tsh-wa-text-muted);
+	font-weight: 400;
+}
+
+/* ============================================================
+   Tab nav (settings)
+   ============================================================ */
+.tsh-wa-tab-nav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+	margin: 16px 0 0;
+	border-bottom: 1px solid var(--tsh-wa-border);
+}
+
+.tsh-wa-tab-nav__item {
+	display: inline-block;
+	padding: 10px 16px;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--tsh-wa-text-muted);
+	text-decoration: none;
+	border-bottom: 3px solid transparent;
+	margin-bottom: -1px;
+	border-radius: var(--tsh-wa-radius) var(--tsh-wa-radius) 0 0;
+	transition: color .1s, background .1s;
+}
+
+.tsh-wa-tab-nav__item:hover {
+	color: var(--tsh-wa-blue);
+	background: var(--tsh-wa-grey-light);
+}
+
+.tsh-wa-tab-nav__item--active {
+	color: var(--tsh-wa-blue);
+	border-bottom-color: var(--tsh-wa-blue);
+	background: var(--tsh-wa-white);
+	font-weight: 600;
+}
+
+/* ============================================================
+   Settings form
+   ============================================================ */
+.tsh-wa-settings-form {
+	background: var(--tsh-wa-white);
+	border: 1px solid var(--tsh-wa-border);
+	border-radius: var(--tsh-wa-radius-lg);
+	padding: 24px;
+	margin: 16px 0;
+	box-shadow: var(--tsh-wa-shadow);
+}
+
+.tsh-wa-settings-form .form-table th {
+	padding: 16px 20px 16px 0;
+	font-size: 13px;
+}
+
+.tsh-wa-settings-form .form-table td {
+	padding: 12px 0;
+}
+
+.tsh-wa-settings-form .form-table input[type="text"],
+.tsh-wa-settings-form .form-table input[type="password"],
+.tsh-wa-settings-form .form-table input[type="number"],
+.tsh-wa-settings-form .form-table select {
+	border-color: var(--tsh-wa-border);
+	border-radius: var(--tsh-wa-radius);
+}
+
+/* ============================================================
+   Filter form
+   ============================================================ */
+.tsh-wa-filter-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+	margin: 12px 0;
+}
+
+.tsh-wa-filter-form input,
+.tsh-wa-filter-form select {
+	height: 32px;
+	font-size: 13px;
+}
+
+/* ============================================================
+   Tools page
+   ============================================================ */
+.tsh-wa-tools-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.tsh-wa-tools-table tbody tr {
+	border-bottom: 1px solid var(--tsh-wa-border);
+}
+
+.tsh-wa-tools-table tbody tr:last-child {
+	border-bottom: none;
+}
+
+.tsh-wa-tools-table td {
+	padding: 16px 12px;
+	vertical-align: middle;
+	font-size: 13px;
+}
+
+.tsh-wa-tools-table td:first-child {
+	width: 70%;
+}
+
+.tsh-wa-tools-table td strong {
+	display: block;
+	font-size: 14px;
+	margin-bottom: 4px;
+}
+
+.tsh-wa-sysinfo-table tbody tr {
+	border-bottom: 1px solid var(--tsh-wa-border);
+}
+
+.tsh-wa-sysinfo-table td {
+	padding: 9px 12px;
+	font-size: 13px;
+}
+
+.tsh-wa-sysinfo-table td:first-child {
+	width: 30%;
+	color: var(--tsh-wa-text-muted);
+}
+
+/* ============================================================
+   Log context details
+   ============================================================ */
+.tsh-wa-log-context {
+	margin-top: 6px;
+}
+
+.tsh-wa-log-context summary {
+	font-size: 11px;
+	color: var(--tsh-wa-blue);
+	cursor: pointer;
+}
+
+.tsh-wa-log-context pre {
+	margin: 6px 0 0;
+	padding: 8px 10px;
+	background: var(--tsh-wa-grey-light);
+	border: 1px solid var(--tsh-wa-border);
+	border-radius: 4px;
+	font-size: 11px;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+/* ============================================================
+   Pagination
+   ============================================================ */
+.tsh-wa-pagination {
+	margin: 16px 0 4px;
+	text-align: right;
+}
+
+.tsh-wa-pagination .page-numbers {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 30px;
+	height: 30px;
+	padding: 0 6px;
+	border: 1px solid var(--tsh-wa-border);
+	border-radius: var(--tsh-wa-radius);
+	font-size: 13px;
+	text-decoration: none;
+	color: var(--tsh-wa-text);
+	margin: 0 2px;
+}
+
+.tsh-wa-pagination .page-numbers.current {
+	background: var(--tsh-wa-blue);
+	border-color: var(--tsh-wa-blue);
+	color: var(--tsh-wa-white);
+	font-weight: 600;
+}
+
+.tsh-wa-pagination .page-numbers:hover:not(.current) {
+	border-color: var(--tsh-wa-blue);
+	color: var(--tsh-wa-blue);
+}
+
+/* ============================================================
+   Empty states
+   ============================================================ */
+.tsh-wa-empty {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 20px 0;
+	font-size: 14px;
+	color: var(--tsh-wa-text-muted);
+}
+
+.tsh-wa-empty .dashicons {
+	font-size: 20px;
+	width: 20px;
+	height: 20px;
+}
+
+.tsh-wa-coming-soon {
+	text-align: center;
+	padding: 48px 20px;
+}
+
+.tsh-wa-coming-soon .dashicons {
+	font-size: 48px;
+	width: 48px;
+	height: 48px;
+	color: var(--tsh-wa-green);
+	margin-bottom: 12px;
+}
+
+.tsh-wa-coming-soon h2 {
+	font-size: 18px;
+	margin: 0 0 8px;
+}
+
+.tsh-wa-coming-soon p {
+	max-width: 480px;
+	margin: 0 auto 8px;
+	color: var(--tsh-wa-text-muted);
+	font-size: 14px;
+}
+
+.tsh-wa-coming-soon__meta {
+	font-size: 12px !important;
+	color: var(--tsh-wa-grey) !important;
+}
+
+/* ============================================================
+   About page
+   ============================================================ */
+.tsh-wa-about-hero {
+	display: flex;
+	gap: 24px;
+	align-items: flex-start;
+	padding: 28px 24px;
+}
+
+.tsh-wa-about-hero__logo {
+	flex-shrink: 0;
+}
+
+.tsh-wa-about-hero__content h2 {
+	margin: 0 0 6px;
+	font-size: 22px;
+	font-weight: 700;
+}
+
+.tsh-wa-about-hero__tagline {
+	font-size: 14px;
+	color: var(--tsh-wa-text-muted);
+	margin: 0 0 14px;
+}
+
+.tsh-wa-about-hero__meta {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 24px;
+	font-size: 13px;
+}
+
+/* ============================================================
+   Roadmap list
+   ============================================================ */
+.tsh-wa-roadmap {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tsh-wa-roadmap__item {
+	display: flex;
+	gap: 14px;
+	padding: 14px 0;
+	border-bottom: 1px solid var(--tsh-wa-border);
+	font-size: 13px;
+}
+
+.tsh-wa-roadmap__item:last-child {
+	border-bottom: none;
+}
+
+.tsh-wa-roadmap__item .dashicons {
+	font-size: 20px;
+	width: 20px;
+	height: 20px;
+	flex-shrink: 0;
+	margin-top: 1px;
+	color: var(--tsh-wa-grey);
+}
+
+.tsh-wa-roadmap__item--done .dashicons {
+	color: var(--tsh-wa-green);
+}
+
+.tsh-wa-roadmap__item strong {
+	display: block;
+	font-size: 14px;
+	margin-bottom: 3px;
+}
+
+.tsh-wa-roadmap__item p {
+	margin: 0;
+	color: var(--tsh-wa-text-muted);
+}
+
+/* ============================================================
+   Bulk / action forms
+   ============================================================ */
+.tsh-wa-bulk-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin: 12px 0;
+}

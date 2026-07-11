@@ -1,0 +1,1 @@
+- [TSH WA Plugin Foundation](tsh-wa-plugin.md) — Phase 1 WordPress/WooCommerce plugin at tsh-whatsapp-notify/; PSR-4 namespace TSH\WhatsAppNotify\, PHP 8.1+, no Composer vendor dir yet.
