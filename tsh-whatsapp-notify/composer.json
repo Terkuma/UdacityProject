@@ -1,0 +1,41 @@
+{
+    "name": "tsh/tsh-whatsapp-notify",
+    "description": "Professional WhatsApp notification system for WooCommerce.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "version": "1.0.0",
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "squizlabs/php_codesniffer": "^3.7",
+        "wp-coding-standards/wpcs": "^3.0",
+        "phpunit/phpunit": "^10.0",
+        "brain/monkey": "^2.6",
+        "mockery/mockery": "^1.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "TSH\\WhatsAppNotify\\": "includes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "TSH\\WhatsAppNotify\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "phpcs": "phpcs --standard=WordPress includes/",
+        "phpcbf": "phpcbf --standard=WordPress includes/",
+        "test":   "phpunit --testdox"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
