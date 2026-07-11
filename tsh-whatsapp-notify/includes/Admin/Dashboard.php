@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use TSH\WhatsAppNotify\API\HealthMonitor;
 use TSH\WhatsAppNotify\Database\Installer;
 use TSH\WhatsAppNotify\Helpers\Helpers;
 use TSH\WhatsAppNotify\Logger\Logger;
@@ -61,6 +62,10 @@ final class Dashboard {
 			'order'    => 'DESC',
 		] );
 
+		// WhatsApp Cloud API health status (cached — no live API call on page load).
+		$health_monitor = new HealthMonitor();
+		$api_health     = $health_monitor->get_dashboard_status();
+
 		return [
 			// Plugin meta.
 			'plugin_version'  => TSH_WA_VERSION,
@@ -76,9 +81,14 @@ final class Dashboard {
 			'woocommerce_active'  => class_exists( 'WooCommerce' ),
 			'woocommerce_version' => defined( 'WC_VERSION' ) ? WC_VERSION : '–',
 
-			// WhatsApp API (Phase 1: always "Not configured").
-			'whatsapp_status'    => Helpers::is_plugin_ready() ? 'connected' : 'not_configured',
+			// WhatsApp API — now powered by HealthMonitor cache.
+			'whatsapp_status'    => ( true === $api_health['success'] ) ? 'connected' : 'not_configured',
 			'whatsapp_test_mode' => Helpers::is_test_mode(),
+
+			// API health detail (Phase 2).
+			'api_health'     => $api_health,
+			'url_tools'      => admin_url( 'admin.php?page=tsh-whatsapp-notify-tools' ),
+			'url_settings_api' => admin_url( 'admin.php?page=tsh-whatsapp-notify-settings&tab=api' ),
 
 			// Queue summary.
 			'queue_pending'    => $queue_counts[ Queue::STATUS_PENDING ]    ?? 0,

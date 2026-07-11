@@ -35,7 +35,7 @@ final class Installer {
 	 * Current database schema version.
 	 * Increment this constant whenever tables are altered.
 	 */
-	public const DB_VERSION = '1.0.0';
+	public const DB_VERSION = '2.0.0';
 
 	/**
 	 * Run the installer — create or upgrade all tables.
@@ -154,6 +154,28 @@ final class Installer {
 			updated_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			PRIMARY KEY     (id),
 			UNIQUE KEY      uq_option_key (option_key)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// API requests log (Phase 2)
+		// ------------------------------------------------------------------
+		$api_requests = $wpdb->prefix . 'tsh_wa_api_requests';
+		$sql[] = "CREATE TABLE {$api_requests} (
+			id              BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			endpoint        VARCHAR(500)         NOT NULL               COMMENT 'Relative endpoint path, e.g. 123456/messages',
+			method          VARCHAR(10)          NOT NULL DEFAULT 'POST' COMMENT 'HTTP verb',
+			latency_ms      DECIMAL(10,3)        NOT NULL DEFAULT 0.000  COMMENT 'Round-trip time in milliseconds',
+			http_status     SMALLINT(5) UNSIGNED NOT NULL DEFAULT 0,
+			success         TINYINT(1)           NOT NULL DEFAULT 0,
+			retry_count     TINYINT(3) UNSIGNED  NOT NULL DEFAULT 0,
+			error_code      VARCHAR(100)                  DEFAULT NULL,
+			response_size   INT(10) UNSIGNED     NOT NULL DEFAULT 0      COMMENT 'Byte length of response body',
+			response_body   LONGTEXT                      DEFAULT NULL   COMMENT 'Raw JSON body — stored only in debug mode',
+			created_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY     (id),
+			KEY             idx_success    (success),
+			KEY             idx_created_at (created_at),
+			KEY             idx_http_status(http_status)
 		) ENGINE=InnoDB {$charset_collate};";
 
 		foreach ( $sql as $statement ) {

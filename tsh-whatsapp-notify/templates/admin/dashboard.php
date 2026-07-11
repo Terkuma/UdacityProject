@@ -190,6 +190,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 	</div><!-- .tsh-wa-cards -->
 
+	<?php /* ── WhatsApp Cloud status card (replaces basic API card info) ─ */ ?>
+	<?php
+	$api_connected     = true === ( $api_health['success'] ?? null );
+	$api_unconfigured  = isset( $api_health['error_code'] ) && 'NOT_CONFIGURED' === $api_health['error_code'];
+	$api_unknown       = null === ( $api_health['success'] ?? 'x' ) || ! isset( $api_health['success'] );
+	$api_status_class  = $api_connected ? 'tsh-wa-card__icon--green' : ( $api_unconfigured ? 'tsh-wa-card__icon--grey' : 'tsh-wa-card__icon--red' );
+	?>
+
 	<?php /* ── Lower panels ──────────────────────────────────────────────── */ ?>
 	<div class="tsh-wa-panels">
 
@@ -235,6 +243,132 @@ if ( ! defined( 'ABSPATH' ) ) {
 					<p class="tsh-wa-empty">
 						<span class="dashicons dashicons-info-outline"></span>
 						<?php esc_html_e( 'No log entries yet.', 'tsh-whatsapp-notify' ); ?>
+					</p>
+				<?php endif; ?>
+			</div>
+		</div>
+
+		<?php /* WhatsApp Cloud API panel */ ?>
+		<div class="tsh-wa-panel">
+			<div class="tsh-wa-panel__header">
+				<h2><?php esc_html_e( 'WhatsApp Cloud API', 'tsh-whatsapp-notify' ); ?></h2>
+				<div class="tsh-wa-panel__actions">
+					<button type="button" id="tsh-wa-refresh-health" class="button button-small">
+						<span class="dashicons dashicons-update" style="vertical-align:middle;"></span>
+						<?php esc_html_e( 'Refresh', 'tsh-whatsapp-notify' ); ?>
+					</button>
+				</div>
+			</div>
+			<div class="tsh-wa-panel__body" id="tsh-wa-health-panel">
+
+				<?php if ( $api_unconfigured ) : ?>
+					<p class="tsh-wa-empty">
+						<span class="dashicons dashicons-warning" style="color:var(--tsh-wa-orange);"></span>
+						<?php esc_html_e( 'API credentials not configured.', 'tsh-whatsapp-notify' ); ?>
+						<a href="<?php echo esc_url( $url_settings_api ); ?>"><?php esc_html_e( 'Configure now →', 'tsh-whatsapp-notify' ); ?></a>
+					</p>
+				<?php else : ?>
+					<ul class="tsh-wa-health-list">
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--<?php echo $api_connected ? 'ok' : 'error'; ?>">
+							<span class="tsh-wa-health-list__icon">
+								<span class="dashicons dashicons-<?php echo $api_connected ? 'yes-alt' : 'dismiss'; ?>"></span>
+							</span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'Connection', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value">
+								<strong><?php echo $api_connected ? esc_html__( 'Connected', 'tsh-whatsapp-notify' ) : esc_html__( 'Disconnected', 'tsh-whatsapp-notify' ); ?></strong>
+							</span>
+						</li>
+
+						<?php if ( ! empty( $api_health['phone_number'] ) ) : ?>
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--ok">
+							<span class="tsh-wa-health-list__icon"><span class="dashicons dashicons-phone"></span></span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'Phone Number', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value"><?php echo esc_html( $api_health['phone_number'] ); ?></span>
+						</li>
+						<?php endif; ?>
+
+						<?php if ( ! empty( $api_health['display_name'] ) ) : ?>
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--ok">
+							<span class="tsh-wa-health-list__icon"><span class="dashicons dashicons-businessman"></span></span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'Business', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value"><?php echo esc_html( $api_health['display_name'] ); ?></span>
+						</li>
+						<?php endif; ?>
+
+						<?php if ( ! empty( $api_health['api_version'] ) ) : ?>
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--ok">
+							<span class="tsh-wa-health-list__icon"><span class="dashicons dashicons-code-standards"></span></span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'API Version', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value"><?php echo esc_html( $api_health['api_version'] ); ?></span>
+						</li>
+						<?php endif; ?>
+
+						<?php if ( isset( $api_health['latency_ms'] ) && null !== $api_health['latency_ms'] ) : ?>
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--<?php echo (float) $api_health['latency_ms'] < 1000 ? 'ok' : 'warning'; ?>">
+							<span class="tsh-wa-health-list__icon"><span class="dashicons dashicons-performance"></span></span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'Latency', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value"><?php echo esc_html( number_format( (float) $api_health['latency_ms'], 0 ) . ' ms' ); ?></span>
+						</li>
+						<?php endif; ?>
+
+						<?php if ( isset( $api_health['messages_today'] ) ) : ?>
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--ok">
+							<span class="tsh-wa-health-list__icon"><span class="dashicons dashicons-chart-bar"></span></span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'Requests Today', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value">
+								<span class="tsh-wa-badge tsh-wa-badge--green"><?php echo esc_html( number_format_i18n( (int) $api_health['messages_today'] ) ); ?> <?php esc_html_e( 'ok', 'tsh-whatsapp-notify' ); ?></span>
+								<?php if ( (int) $api_health['errors_today'] > 0 ) : ?>
+								<span class="tsh-wa-badge tsh-wa-badge--red"><?php echo esc_html( number_format_i18n( (int) $api_health['errors_today'] ) ); ?> <?php esc_html_e( 'err', 'tsh-whatsapp-notify' ); ?></span>
+								<?php endif; ?>
+							</span>
+						</li>
+						<?php endif; ?>
+
+						<?php if ( isset( $api_health['success_rate'] ) && ( (int) ( $api_health['messages_today'] ?? 0 ) + (int) ( $api_health['errors_today'] ?? 0 ) ) > 0 ) : ?>
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--ok">
+							<span class="tsh-wa-health-list__icon"><span class="dashicons dashicons-yes"></span></span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'Success Rate', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value"><?php echo esc_html( $api_health['success_rate'] . '%' ); ?></span>
+						</li>
+						<?php endif; ?>
+
+						<?php if ( ! empty( $api_health['last_successful_request'] ) ) : ?>
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--ok">
+							<span class="tsh-wa-health-list__icon"><span class="dashicons dashicons-clock"></span></span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'Last Successful', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value">
+								<?php echo esc_html( human_time_diff( strtotime( $api_health['last_successful_request'] ), current_time( 'timestamp' ) ) . ' ' . __( 'ago', 'tsh-whatsapp-notify' ) ); ?>
+							</span>
+						</li>
+						<?php endif; ?>
+
+						<?php if ( ! empty( $api_health['last_failed_request'] ) ) : ?>
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--warning">
+							<span class="tsh-wa-health-list__icon"><span class="dashicons dashicons-warning"></span></span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'Last Failed', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value">
+								<?php echo esc_html( human_time_diff( strtotime( $api_health['last_failed_request'] ), current_time( 'timestamp' ) ) . ' ' . __( 'ago', 'tsh-whatsapp-notify' ) ); ?>
+							</span>
+						</li>
+						<?php endif; ?>
+
+						<?php if ( ! $api_connected && ! empty( $api_health['message'] ) ) : ?>
+						<li class="tsh-wa-health-list__item tsh-wa-health-list__item--error">
+							<span class="tsh-wa-health-list__icon"><span class="dashicons dashicons-dismiss"></span></span>
+							<span class="tsh-wa-health-list__label"><?php esc_html_e( 'Error', 'tsh-whatsapp-notify' ); ?></span>
+							<span class="tsh-wa-health-list__value tsh-wa-health-list__value--wrap"><?php echo esc_html( $api_health['message'] ); ?></span>
+						</li>
+						<?php endif; ?>
+					</ul>
+
+					<p style="margin-top:12px;margin-bottom:0;">
+						<a href="<?php echo esc_url( $url_tools ); ?>" class="button button-small">
+							<?php esc_html_e( 'Run Diagnostics', 'tsh-whatsapp-notify' ); ?>
+						</a>
+						&nbsp;
+						<a href="<?php echo esc_url( $url_settings_api ); ?>" class="button button-small">
+							<?php esc_html_e( 'API Settings', 'tsh-whatsapp-notify' ); ?>
+						</a>
 					</p>
 				<?php endif; ?>
 			</div>

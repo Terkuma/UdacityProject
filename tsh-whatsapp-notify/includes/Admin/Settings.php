@@ -164,13 +164,32 @@ final class Settings {
 			'sanitize_callback' => [ $this, 'sanitize_api' ],
 		] );
 
+		// -- Section: Enable / disable API integration ----------------------
+
+		add_settings_section(
+			'tsh_wa_api_enable_section',
+			__( 'API Integration', 'tsh-whatsapp-notify' ),
+			static function (): void {
+				echo '<p>' . esc_html__( 'Enable the WhatsApp Cloud API integration to start sending messages.', 'tsh-whatsapp-notify' ) . '</p>';
+			},
+			$option
+		);
+
+		add_settings_field( 'enable_api',
+			__( 'Enable API', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_checkbox_field' ], $option, 'tsh_wa_api_enable_section',
+			[ 'option_key' => $option, 'field' => 'enable_api', 'label' => __( 'Enable the Meta WhatsApp Cloud API. Must be on to send any messages.', 'tsh-whatsapp-notify' ) ]
+		);
+
+		// -- Section: Credentials -------------------------------------------
+
 		add_settings_section(
 			'tsh_wa_api_section',
 			__( 'Meta WhatsApp Cloud API Credentials', 'tsh-whatsapp-notify' ),
 			static function (): void {
 				echo '<p>' . wp_kses(
-					__( 'Enter your <strong>Meta Business</strong> WhatsApp Cloud API credentials. These are required to send messages.', 'tsh-whatsapp-notify' ),
-					[ 'strong' => [] ]
+					__( 'Enter your <strong>Meta Business</strong> WhatsApp Cloud API credentials. Find these in the <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers</a> portal.', 'tsh-whatsapp-notify' ),
+					[ 'strong' => [], 'a' => [ 'href' => [], 'target' => [], 'rel' => [] ] ]
 				) . '</p>';
 			},
 			$option
@@ -190,20 +209,55 @@ final class Settings {
 
 		add_settings_field( 'access_token',
 			__( 'Permanent Access Token', 'tsh-whatsapp-notify' ),
-			[ $this, 'render_password_field' ], $option, 'tsh_wa_api_section',
-			[ 'option_key' => $option, 'field' => 'access_token', 'desc' => __( 'Your Meta System User permanent access token. Stored encrypted.', 'tsh-whatsapp-notify' ) ]
+			[ $this, 'render_token_field' ], $option, 'tsh_wa_api_section',
+			[ 'option_key' => $option, 'field' => 'access_token', 'desc' => __( 'Your Meta System User permanent access token. Never logged or exposed.', 'tsh-whatsapp-notify' ) ]
 		);
 
 		add_settings_field( 'api_version',
 			__( 'Graph API Version', 'tsh-whatsapp-notify' ),
 			[ $this, 'render_text_field' ], $option, 'tsh_wa_api_section',
-			[ 'option_key' => $option, 'field' => 'api_version', 'default' => 'v19.0', 'desc' => __( 'Meta Graph API version, e.g. v19.0.', 'tsh-whatsapp-notify' ) ]
+			[ 'option_key' => $option, 'field' => 'api_version', 'default' => 'v23.0', 'placeholder' => 'v23.0', 'desc' => __( 'Meta Graph API version. Default: v23.0.', 'tsh-whatsapp-notify' ) ]
 		);
 
 		add_settings_field( 'webhook_verify_token',
 			__( 'Webhook Verify Token', 'tsh-whatsapp-notify' ),
 			[ $this, 'render_password_field' ], $option, 'tsh_wa_api_section',
-			[ 'option_key' => $option, 'field' => 'webhook_verify_token', 'desc' => __( 'Secret token you enter in the Meta webhook configuration. Auto-generated on activation.', 'tsh-whatsapp-notify' ) ]
+			[ 'option_key' => $option, 'field' => 'webhook_verify_token', 'desc' => __( 'Secret token you enter in the Meta webhook configuration.', 'tsh-whatsapp-notify' ) ]
+		);
+
+		// -- Section: Connection & reliability ---------------------------------
+
+		add_settings_section(
+			'tsh_wa_api_connection_section',
+			__( 'Connection & Reliability', 'tsh-whatsapp-notify' ),
+			static function (): void {
+				echo '<p>' . esc_html__( 'Configure request timeout and automatic retry behaviour for API calls.', 'tsh-whatsapp-notify' ) . '</p>';
+			},
+			$option
+		);
+
+		add_settings_field( 'test_phone_number',
+			__( 'Test Phone Number', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_text_field' ], $option, 'tsh_wa_api_connection_section',
+			[ 'option_key' => $option, 'field' => 'test_phone_number', 'placeholder' => '+2348012345678', 'desc' => __( 'Default phone number used by the Connection Tester and Message Sandbox.', 'tsh-whatsapp-notify' ) ]
+		);
+
+		add_settings_field( 'request_timeout',
+			__( 'Request Timeout (seconds)', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_number_field' ], $option, 'tsh_wa_api_connection_section',
+			[ 'option_key' => $option, 'field' => 'request_timeout', 'default' => '30', 'min' => 5, 'max' => 120, 'desc' => __( 'Maximum seconds to wait for a Meta API response (5–120).', 'tsh-whatsapp-notify' ) ]
+		);
+
+		add_settings_field( 'retry_attempts',
+			__( 'HTTP Retry Attempts', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_number_field' ], $option, 'tsh_wa_api_connection_section',
+			[ 'option_key' => $option, 'field' => 'retry_attempts', 'default' => '3', 'min' => 0, 'max' => 10, 'desc' => __( 'Retries on timeout or 5xx/429 errors per API call (0–10).', 'tsh-whatsapp-notify' ) ]
+		);
+
+		add_settings_field( 'retry_delay',
+			__( 'Base Retry Delay (seconds)', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_number_field' ], $option, 'tsh_wa_api_connection_section',
+			[ 'option_key' => $option, 'field' => 'retry_delay', 'default' => '5', 'min' => 1, 'max' => 120, 'desc' => __( 'Base seconds between retries — doubles each attempt (exponential back-off).', 'tsh-whatsapp-notify' ) ]
 		);
 	}
 
@@ -500,12 +554,23 @@ final class Settings {
 	 * @return array<string, mixed>
 	 */
 	public function sanitize_api( array $input ): array {
+		// Validate API version format (must match vNN.N pattern).
+		$api_version = sanitize_text_field( $input['api_version'] ?? 'v23.0' );
+		if ( ! preg_match( '/^v\d+\.\d+$/', $api_version ) ) {
+			$api_version = 'v23.0';
+		}
+
 		return [
-			'phone_number_id'      => sanitize_text_field( $input['phone_number_id'] ?? '' ),
+			'enable_api'           => isset( $input['enable_api'] ) ? '1' : '0',
+			'phone_number_id'      => sanitize_text_field( $input['phone_number_id']     ?? '' ),
 			'business_account_id'  => sanitize_text_field( $input['business_account_id'] ?? '' ),
-			'access_token'         => sanitize_text_field( $input['access_token'] ?? '' ),
-			'api_version'          => sanitize_text_field( $input['api_version'] ?? 'v19.0' ),
+			'access_token'         => sanitize_text_field( $input['access_token']         ?? '' ),
+			'api_version'          => $api_version,
 			'webhook_verify_token' => sanitize_text_field( $input['webhook_verify_token'] ?? '' ),
+			'test_phone_number'    => sanitize_text_field( $input['test_phone_number']    ?? '' ),
+			'request_timeout'      => (string) min( max( absint( $input['request_timeout'] ?? 30 ), 5 ), 120 ),
+			'retry_attempts'       => (string) min( max( absint( $input['retry_attempts']  ?? 3  ), 0 ), 10 ),
+			'retry_delay'          => (string) min( max( absint( $input['retry_delay']     ?? 5  ), 1 ), 120 ),
 		];
 	}
 
@@ -608,8 +673,6 @@ final class Settings {
 	public function render_password_field( array $args ): void {
 		$opts  = get_option( $args['option_key'], [] );
 		$value = $opts[ $args['field'] ] ?? '';
-		// Show masked placeholder when a value already exists.
-		$display = $value ? str_repeat( '•', min( strlen( $value ), 32 ) ) : '';
 		printf(
 			'<input type="password" name="%s[%s]" id="%s_%s" value="%s" class="regular-text" autocomplete="new-password">',
 			esc_attr( $args['option_key'] ),
@@ -620,6 +683,41 @@ final class Settings {
 		);
 		if ( ! empty( $args['desc'] ) ) {
 			echo '<p class="description">' . esc_html( $args['desc'] ) . '</p>';
+		}
+	}
+
+	/**
+	 * Render a token field: password input + reveal + copy buttons.
+	 * The raw token value is sent as a form value but never echoed as text.
+	 *
+	 * @param array<string, mixed> $args
+	 */
+	public function render_token_field( array $args ): void {
+		$opts  = get_option( $args['option_key'], [] );
+		$value = $opts[ $args['field'] ] ?? '';
+		$id    = esc_attr( $args['option_key'] ) . '_' . esc_attr( $args['field'] );
+
+		printf(
+			'<div class="tsh-wa-token-field" style="display:flex;align-items:center;gap:6px;">' .
+			'<input type="password" name="%s[%s]" id="%s" value="%s" class="regular-text" autocomplete="new-password" style="font-family:monospace;">' .
+			'<button type="button" class="button tsh-wa-pw-toggle" data-target="%s" aria-label="%s"><span class="dashicons dashicons-visibility"></span></button>' .
+			'</div>',
+			esc_attr( $args['option_key'] ),
+			esc_attr( $args['field'] ),
+			esc_attr( $id ),
+			esc_attr( $value ),
+			esc_attr( $id ),
+			esc_attr__( 'Show / hide token', 'tsh-whatsapp-notify' )
+		);
+
+		if ( ! empty( $args['desc'] ) ) {
+			echo '<p class="description">' . esc_html( $args['desc'] ) . '</p>';
+		}
+
+		if ( $value ) {
+			echo '<p class="description" style="color:var(--tsh-wa-green-dark);">'
+				. esc_html__( '✓ Token is set. Leave blank to keep the existing value.', 'tsh-whatsapp-notify' )
+				. '</p>';
 		}
 	}
 

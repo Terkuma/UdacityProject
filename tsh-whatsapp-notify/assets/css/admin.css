@@ -739,3 +739,193 @@
 	flex-wrap: wrap;
 	margin: 12px 0;
 }
+
+/* ============================================================
+   Phase 2 — API health panel
+   ============================================================ */
+
+.tsh-wa-health-list__value--wrap {
+	flex: 1;
+	word-break: break-word;
+	white-space: normal;
+}
+
+.tsh-wa-panel__actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.tsh-wa-panel__badge {
+	display: inline-block;
+	padding: 2px 10px;
+	border-radius: 20px;
+	font-size: 12px;
+	font-weight: 600;
+	background: var(--tsh-wa-grey-light);
+	color: var(--tsh-wa-text-muted);
+}
+
+/* ============================================================
+   Phase 2 — Connection Tester
+   ============================================================ */
+
+.tsh-wa-connection-tester {
+	margin-top: 24px;
+}
+
+.tsh-wa-conn-info {
+	margin-top: 16px;
+	padding: 12px 16px;
+	background: var(--tsh-wa-grey-light);
+	border-radius: var(--tsh-wa-radius);
+	border-left: 3px solid var(--tsh-wa-green);
+}
+
+.tsh-wa-conn-info-table {
+	border-collapse: collapse;
+}
+
+.tsh-wa-conn-info-table td {
+	padding: 3px 16px 3px 0;
+	font-size: 13px;
+	border: none;
+}
+
+/* ============================================================
+   Phase 2 — AJAX Result panel
+   ============================================================ */
+
+.tsh-wa-ajax-result {
+	margin-top: 12px;
+	padding: 12px 16px;
+	border-radius: var(--tsh-wa-radius);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.tsh-wa-ajax-result--success {
+	background: var(--tsh-wa-green-light);
+	border-left: 3px solid var(--tsh-wa-green-dark);
+	color: #1a4731;
+}
+
+.tsh-wa-ajax-result--error {
+	background: var(--tsh-wa-red-light);
+	border-left: 3px solid var(--tsh-wa-red);
+	color: #7f1d1d;
+}
+
+/* ============================================================
+   Phase 2 — Diagnostic cards grid
+   ============================================================ */
+
+.tsh-wa-diag-grid {
+	display: grid;
+	grid-template-columns: repeat( auto-fill, minmax( 280px, 1fr ) );
+	gap: 12px;
+	margin-top: 16px;
+}
+
+.tsh-wa-diag-card {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 14px 16px;
+	border-radius: var(--tsh-wa-radius);
+	border: 1px solid var(--tsh-wa-border);
+	background: var(--tsh-wa-white);
+	box-shadow: var(--tsh-wa-shadow);
+}
+
+.tsh-wa-diag-card--ok {
+	border-left: 3px solid var(--tsh-wa-green);
+}
+
+.tsh-wa-diag-card--warning {
+	border-left: 3px solid var(--tsh-wa-orange);
+}
+
+.tsh-wa-diag-card--error {
+	border-left: 3px solid var(--tsh-wa-red);
+}
+
+.tsh-wa-diag-card__icon {
+	flex-shrink: 0;
+	font-size: 20px;
+	line-height: 1;
+	margin-top: 2px;
+}
+
+.tsh-wa-diag-card--ok    .tsh-wa-diag-card__icon { color: var(--tsh-wa-green-dark); }
+.tsh-wa-diag-card--warning .tsh-wa-diag-card__icon { color: var(--tsh-wa-orange); }
+.tsh-wa-diag-card--error  .tsh-wa-diag-card__icon { color: var(--tsh-wa-red); }
+
+.tsh-wa-diag-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+}
+
+.tsh-wa-diag-card__label {
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.tsh-wa-diag-card__value {
+	font-size: 12px;
+	color: var(--tsh-wa-text);
+	font-family: monospace;
+	word-break: break-all;
+}
+
+.tsh-wa-diag-card__detail {
+	font-size: 11px;
+	color: var(--tsh-wa-text-muted);
+	word-break: break-word;
+}
+
+/* ============================================================
+   Phase 2 — Code block
+   ============================================================ */
+
+.tsh-wa-code-block {
+	background: #1e1e2e;
+	color: #cdd6f4;
+	border-radius: var(--tsh-wa-radius);
+	padding: 14px 16px;
+	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+	font-size: 12px;
+	line-height: 1.6;
+	overflow-x: auto;
+	max-height: 400px;
+	overflow-y: auto;
+	white-space: pre-wrap;
+	word-break: break-all;
+	margin-top: 12px;
+}
+
+/* ============================================================
+   Phase 2 — Token field
+   ============================================================ */
+
+.tsh-wa-token-field {
+	flex-wrap: wrap;
+}
+
+.tsh-wa-token-field input {
+	font-family: 'Consolas', 'Monaco', monospace;
+	letter-spacing: 0.05em;
+}
+
+/* ============================================================
+   Phase 2 — Dashboard panel actions
+   ============================================================ */
+
+.tsh-wa-panel__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+

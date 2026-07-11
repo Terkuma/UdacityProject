@@ -13,8 +13,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use TSH\WhatsAppNotify\Admin\Ajax;
 use TSH\WhatsAppNotify\Admin\Menu;
+use TSH\WhatsAppNotify\API\HealthMonitor;
 use TSH\WhatsAppNotify\Cron\Scheduler;
+use TSH\WhatsAppNotify\Database\Installer;
 
 /**
  * Class Loader
@@ -99,9 +102,16 @@ final class Loader {
 		// Always boot the cron scheduler (registers events on 'init').
 		$this->components['scheduler'] = new Scheduler();
 
+		// Health monitor — registers the cron health-check action hook.
+		// Runs on every request so the cron callback is always registered.
+		$this->components['health_monitor'] = new HealthMonitor();
+		$this->components['health_monitor']->register_hooks();
+
 		// Admin-only components — never loaded on the frontend.
 		if ( is_admin() ) {
 			$this->components['menu'] = new Menu();
+			// AJAX handlers must be registered in admin context.
+			$this->components['ajax'] = new Ajax();
 		}
 	}
 
@@ -117,6 +127,24 @@ final class Loader {
 			'plugin_action_links_' . TSH_WA_BASENAME,
 			[ $this, 'add_plugin_action_links' ]
 		);
+
+		// Auto-upgrade the database schema when the stored version is behind
+		// the current DB_VERSION constant (e.g. after a plugin file update).
+		add_action( 'plugins_loaded', [ $this, 'maybe_upgrade_db' ], 5 );
+	}
+
+	/**
+	 * Run the DB installer if the stored schema version is behind the current
+	 * version constant. Safe to call on every request — dbDelta is idempotent.
+	 */
+	public function maybe_upgrade_db(): void {
+		$stored_version = get_option( 'tsh_wa_db_version', '0' );
+
+		if ( version_compare( $stored_version, Installer::DB_VERSION, '<' ) ) {
+			$installer = new Installer();
+			$installer->run();
+			update_option( 'tsh_wa_db_version', Installer::DB_VERSION, false );
+		}
 	}
 
 	// -------------------------------------------------------------------------

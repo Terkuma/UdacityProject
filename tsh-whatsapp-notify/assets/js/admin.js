@@ -1,11 +1,19 @@
 /**
  * TSH WhatsApp Notify — Admin JavaScript
  *
- * Vanilla JS + jQuery (WP-bundled). No build step required for Phase 1.
+ * Vanilla JS + jQuery (WP-bundled). No build step required.
  * All behaviour is progressive-enhancement; pages work without JS.
  *
+ * Phase 2 additions:
+ *  - Connection verifier  (initConnectionTester)
+ *  - Test message sender  (initTestMessageSender)
+ *  - Message sandbox      (initMessageSandbox)
+ *  - API diagnostics      (initDiagnostics)
+ *  - Export / reset       (initApiSettingsActions)
+ *  - Health refresh       (initHealthRefresh)
+ *
  * @package TSH\WhatsAppNotify
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 /* global tshWaAdmin, jQuery */
@@ -37,6 +45,14 @@
 			this.initTabMemory();
 			this.initLogContextToggle();
 			this.initCopyToClipboard();
+
+			// Phase 2
+			this.initConnectionTester();
+			this.initTestMessageSender();
+			this.initMessageSandbox();
+			this.initDiagnostics();
+			this.initApiSettingsActions();
+			this.initHealthRefresh();
 		},
 
 		// -----------------------------------------------------------------------
@@ -57,22 +73,40 @@
 		// -----------------------------------------------------------------------
 
 		initPasswordReveal: function () {
-			// Append toggle buttons next to every password input inside our forms.
+			// Token field: button with data-target attribute.
+			$( document ).on( 'click', '.tsh-wa-pw-toggle', function () {
+				var $btn   = $( this );
+				var target = $btn.data( 'target' );
+				var $input = target
+					? $( '#' + target )
+					: $btn.siblings( 'input[type="password"], input[type="text"]' ).first();
+
+				if ( ! $input.length ) {
+					return;
+				}
+
+				var type = $input.attr( 'type' ) === 'password' ? 'text' : 'password';
+				$input.attr( 'type', type );
+				$btn.find( '.dashicons' )
+					.toggleClass( 'dashicons-visibility', type === 'password' )
+					.toggleClass( 'dashicons-hidden', type === 'text' );
+			} );
+
+			// Legacy: append toggle buttons next to every password input inside our
+			// forms that don't already have one.
 			$( '.tsh-wa-settings-form input[type="password"]' ).each( function () {
-				var $input  = $( this );
-				var $btn    = $( '<button type="button" class="button tsh-wa-pw-toggle" style="margin-left:6px;" aria-label="' + ( tshWaAdmin.i18n.show_password || 'Show/hide' ) + '">' +
+				var $input = $( this );
+
+				// Skip if a sibling toggle button already exists.
+				if ( $input.siblings( '.tsh-wa-pw-toggle' ).length ) {
+					return;
+				}
+
+				var $btn = $( '<button type="button" class="button tsh-wa-pw-toggle" style="margin-left:6px;" aria-label="' + ( tshWaAdmin.i18n.show_password || 'Show/hide' ) + '">' +
 					'<span class="dashicons dashicons-visibility"></span>' +
 					'</button>' );
 
 				$btn.insertAfter( $input );
-
-				$btn.on( 'click', function () {
-					var type = $input.attr( 'type' ) === 'password' ? 'text' : 'password';
-					$input.attr( 'type', type );
-					$( this ).find( '.dashicons' )
-						.toggleClass( 'dashicons-visibility', type === 'password' )
-						.toggleClass( 'dashicons-hidden', type === 'text' );
-				} );
 			} );
 		},
 
@@ -81,7 +115,7 @@
 		// -----------------------------------------------------------------------
 
 		/**
-		 * Any submit button with data-confirm="..." will prompt before submitting.
+		 * Any submit button with data-tsh-wa-confirm="..." will prompt before submitting.
 		 */
 		initConfirmForms: function () {
 			$( document ).on( 'click', '[data-tsh-wa-confirm]', function ( e ) {
@@ -99,7 +133,6 @@
 		// -----------------------------------------------------------------------
 
 		initTabMemory: function () {
-			// On settings page: highlight & scroll to the active tab.
 			var $activeTab = $( '.tsh-wa-tab-nav__item--active' );
 			if ( $activeTab.length ) {
 				$activeTab[0].scrollIntoView( { inline: 'nearest', block: 'nearest' } );
@@ -113,7 +146,6 @@
 		initLogContextToggle: function () {
 			$( document ).on( 'toggle', '.tsh-wa-log-context', function () {
 				if ( this.open ) {
-					// Close all other open context details in the same table.
 					$( '.tsh-wa-log-context[open]' ).not( this ).each( function () {
 						this.open = false;
 					} );
@@ -122,30 +154,24 @@
 		},
 
 		// -----------------------------------------------------------------------
-		// Copy to clipboard utility (used on webhook token field, etc.)
+		// Copy to clipboard utility
 		// -----------------------------------------------------------------------
 
 		initCopyToClipboard: function () {
 			$( document ).on( 'click', '[data-tsh-wa-copy]', function () {
-				var target = $( this ).data( 'tsh-wa-copy' );
+				var target  = $( this ).data( 'tsh-wa-copy' );
 				var $target = $( '#' + target );
 
-				if ( ! $target.length ) {
-					return;
-				}
+				if ( ! $target.length ) { return; }
 
 				var text = $target.val() || $target.text();
-
-				if ( ! text ) {
-					return;
-				}
+				if ( ! text ) { return; }
 
 				if ( navigator.clipboard && window.isSecureContext ) {
 					navigator.clipboard.writeText( text ).then( function () {
 						TSHWaAdmin.showCopySuccess( $( '[data-tsh-wa-copy="' + target + '"]' ) );
 					} );
 				} else {
-					// Fallback: select + execCommand.
 					var $tmp = $( '<textarea style="position:absolute;left:-9999px;">' + text + '</textarea>' );
 					$( 'body' ).append( $tmp );
 					$tmp.select();
@@ -170,7 +196,431 @@
 		},
 
 		// -----------------------------------------------------------------------
-		// AJAX helper (available for Phase 2+)
+		// PHASE 2 — Connection Tester
+		// -----------------------------------------------------------------------
+
+		initConnectionTester: function () {
+			var $btn    = $( '#tsh-wa-btn-verify' );
+			var $result = $( '#tsh-wa-verify-result' );
+			var $steps  = $( '#tsh-wa-verify-steps' );
+			var $list   = $( '#tsh-wa-steps-list' );
+			var $info   = $( '#tsh-wa-conn-info' );
+			var $badge  = $( '#tsh-wa-conn-status-badge' );
+
+			if ( ! $btn.length ) { return; }
+
+			$btn.on( 'click', function () {
+				$btn.prop( 'disabled', true ).text( tshWaAdmin.i18n.verifying || 'Verifying…' );
+				$result.hide().removeClass( 'tsh-wa-ajax-result--success tsh-wa-ajax-result--error' );
+				$steps.hide();
+				$list.empty();
+				$info.hide().empty();
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_verify_connection',
+					{},
+					function ( response ) {
+						$btn.prop( 'disabled', false ).html( '<span class="dashicons dashicons-admin-network" style="vertical-align:middle;margin-top:-2px;"></span> ' + ( tshWaAdmin.i18n.verify_connection || 'Verify Connection' ) );
+
+						if ( ! response.success ) {
+							TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.error || 'Request failed.' );
+							return;
+						}
+
+						var data       = response.data;
+						var connected  = data.connected;
+
+						// Update badge.
+						$badge
+							.text( connected ? ( tshWaAdmin.i18n.connected || 'Connected' ) : ( tshWaAdmin.i18n.disconnected || 'Disconnected' ) )
+							.css( 'background', connected ? 'var(--tsh-wa-green)' : 'var(--tsh-wa-red)' )
+							.css( 'color', '#fff' );
+
+						// Build step list.
+						if ( data.steps && data.steps.length ) {
+							$steps.show();
+							$.each( data.steps, function ( i, step ) {
+								var icon = 'ok' === step.status ? 'dashicons-yes-alt' : ( 'warning' === step.status ? 'dashicons-warning' : 'dashicons-dismiss' );
+								var $li  = $(
+									'<li class="tsh-wa-health-list__item tsh-wa-health-list__item--' + TSHWaAdmin.esc( step.status ) + '">' +
+									'<span class="tsh-wa-health-list__icon"><span class="dashicons ' + icon + '"></span></span>' +
+									'<span class="tsh-wa-health-list__label">' + TSHWaAdmin.esc( step.label ) + '</span>' +
+									'<span class="tsh-wa-health-list__value tsh-wa-health-list__value--wrap">' + TSHWaAdmin.esc( step.detail ) + '</span>' +
+									'</li>'
+								);
+								$list.append( $li );
+							} );
+						}
+
+						// Phone / business info.
+						if ( connected && data.phone_number ) {
+							var infoHtml =
+								'<table class="tsh-wa-conn-info-table">' +
+								'<tr><td><strong>' + ( tshWaAdmin.i18n.phone_number || 'Phone' ) + ':</strong></td><td>' + TSHWaAdmin.esc( data.phone_number ) + '</td></tr>' +
+								( data.display_name  ? '<tr><td><strong>' + ( tshWaAdmin.i18n.business || 'Business' ) + ':</strong></td><td>' + TSHWaAdmin.esc( data.display_name ) + '</td></tr>' : '' ) +
+								( data.quality_rating ? '<tr><td><strong>' + ( tshWaAdmin.i18n.quality || 'Quality' ) + ':</strong></td><td>' + TSHWaAdmin.esc( data.quality_rating ) + '</td></tr>' : '' ) +
+								( data.api_version   ? '<tr><td><strong>' + ( tshWaAdmin.i18n.api_version || 'API Version' ) + ':</strong></td><td>' + TSHWaAdmin.esc( data.api_version ) + '</td></tr>' : '' ) +
+								'<tr><td><strong>' + ( tshWaAdmin.i18n.latency || 'Latency' ) + ':</strong></td><td>' + data.latency_ms + ' ms</td></tr>' +
+								'</table>';
+							$info.html( infoHtml ).show();
+						}
+
+					},
+					function () {
+						$btn.prop( 'disabled', false ).text( tshWaAdmin.i18n.verify_connection || 'Verify Connection' );
+						TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.error || 'Request failed.' );
+					}
+				);
+			} );
+		},
+
+		// -----------------------------------------------------------------------
+		// PHASE 2 — Test Message (settings page)
+		// -----------------------------------------------------------------------
+
+		initTestMessageSender: function () {
+			var $btn     = $( '#tsh-wa-btn-send-test' );
+			var $spinner = $( '#tsh-wa-send-spinner' );
+			var $result  = $( '#tsh-wa-send-result' );
+
+			if ( ! $btn.length ) { return; }
+
+			$btn.on( 'click', function () {
+				var phone   = $( '#tsh-wa-test-phone' ).val().trim();
+				var message = $( '#tsh-wa-test-message' ).val().trim();
+
+				if ( ! phone || ! message ) {
+					TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.fill_required || 'Phone and message are required.' );
+					return;
+				}
+
+				$btn.prop( 'disabled', true );
+				$spinner.css( 'visibility', 'visible' );
+				$result.hide();
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_send_test_message',
+					{ phone: phone, message: message },
+					function ( response ) {
+						$btn.prop( 'disabled', false );
+						$spinner.css( 'visibility', 'hidden' );
+
+						if ( response.success ) {
+							var d   = response.data;
+							var msg = '✓ ' + d.message +
+								( d.message_id ? ' — ID: ' + d.message_id : '' ) +
+								' (' + d.latency_ms + ' ms)';
+							TSHWaAdmin.showAjaxResult( $result, true, msg );
+							if ( d.raw_body ) {
+								$result.append( '<pre class="tsh-wa-code-block" style="margin-top:8px;">' + TSHWaAdmin.esc( d.raw_body ) + '</pre>' );
+							}
+						} else {
+							var e   = response.data || {};
+							var err = ( e.message || tshWaAdmin.i18n.error || 'Send failed.' ) +
+								( e.http_status        ? ' [HTTP ' + e.http_status + ']' : '' ) +
+								( e.meta_error_code    ? ' [Code: ' + e.meta_error_code + ']' : '' ) +
+								( e.meta_error_message && e.meta_error_message !== e.message ? ' — ' + e.meta_error_message : '' ) +
+								( e.latency_ms         ? ' (' + e.latency_ms + ' ms)' : '' );
+							TSHWaAdmin.showAjaxResult( $result, false, err );
+							if ( e.raw_body ) {
+								$result.append( '<pre class="tsh-wa-code-block" style="margin-top:8px;">' + TSHWaAdmin.esc( e.raw_body ) + '</pre>' );
+							}
+						}
+					},
+					function () {
+						$btn.prop( 'disabled', false );
+						$spinner.css( 'visibility', 'hidden' );
+						TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.error || 'Request failed.' );
+					}
+				);
+			} );
+		},
+
+		// -----------------------------------------------------------------------
+		// PHASE 2 — Message Sandbox (tools page)
+		// -----------------------------------------------------------------------
+
+		initMessageSandbox: function () {
+			var $btn     = $( '#tsh-wa-btn-sandbox-send' );
+			var $spinner = $( '#tsh-wa-sandbox-spinner' );
+			var $result  = $( '#tsh-wa-sandbox-result' );
+			var $json    = $( '#tsh-wa-sandbox-json' );
+			var $jsonBody = $( '#tsh-wa-sandbox-json-body' );
+			var $charCount = $( '#tsh-wa-sandbox-char-count' );
+			var $textarea  = $( '#tsh-wa-sandbox-message' );
+
+			if ( ! $btn.length ) { return; }
+
+			// Character counter.
+			if ( $textarea.length && $charCount.length ) {
+				$textarea.on( 'input', function () {
+					var len = $( this ).val().length;
+					$charCount.text( len + ' / 4096' );
+					$charCount.css( 'color', len > 4096 ? 'var(--tsh-wa-red)' : '' );
+				} );
+				$textarea.trigger( 'input' );
+			}
+
+			$btn.on( 'click', function () {
+				var phone   = $( '#tsh-wa-sandbox-phone' ).val().trim();
+				var message = $textarea.val().trim();
+
+				if ( ! phone || ! message ) {
+					TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.fill_required || 'Phone and message are required.' );
+					return;
+				}
+
+				if ( message.length > 4096 ) {
+					TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.message_too_long || 'Message exceeds 4096 characters.' );
+					return;
+				}
+
+				$btn.prop( 'disabled', true );
+				$spinner.css( 'visibility', 'visible' );
+				$result.hide();
+				$json.hide();
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_send_test_message',
+					{ phone: phone, message: message },
+					function ( response ) {
+						$btn.prop( 'disabled', false );
+						$spinner.css( 'visibility', 'hidden' );
+
+						if ( response.success ) {
+							var d   = response.data;
+							var msg = '✓ ' + ( d.message || 'Message sent.' ) +
+								( d.message_id ? '\nMessage ID: ' + d.message_id : '' ) +
+								'\nLatency: ' + d.latency_ms + ' ms';
+							TSHWaAdmin.showAjaxResult( $result, true, msg );
+							if ( $json.length && d.raw_body ) {
+								$jsonBody.text( d.raw_body );
+								$json.show();
+							}
+						} else {
+							var e   = response.data || {};
+							var err = ( e.message || 'Send failed.' ) +
+								( e.http_status     ? '\nHTTP Status: ' + e.http_status : '' ) +
+								( e.meta_error_code ? '\nError Code: ' + e.meta_error_code : '' ) +
+								( e.meta_error_message && e.meta_error_message !== e.message ? '\nError: ' + e.meta_error_message : '' ) +
+								( e.latency_ms      ? '\nLatency: ' + e.latency_ms + ' ms' : '' ) +
+								( e.retry           ? '\n(Retry recommended)' : '' );
+							TSHWaAdmin.showAjaxResult( $result, false, err );
+							if ( $json.length && e.raw_body ) {
+								$jsonBody.text( e.raw_body );
+								$json.show();
+							}
+						}
+					},
+					function () {
+						$btn.prop( 'disabled', false );
+						$spinner.css( 'visibility', 'hidden' );
+						TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.error || 'Request failed.' );
+					}
+				);
+			} );
+		},
+
+		// -----------------------------------------------------------------------
+		// PHASE 2 — Diagnostics
+		// -----------------------------------------------------------------------
+
+		initDiagnostics: function () {
+			var $btn      = $( '#tsh-wa-btn-diagnostics' );
+			var $spinner  = $( '#tsh-wa-diag-spinner' );
+			var $result   = $( '#tsh-wa-diag-result' );
+			var $grid     = $( '#tsh-wa-diag-grid' );
+			var $download = $( '#tsh-wa-btn-download-report' );
+
+			if ( ! $btn.length ) { return; }
+
+			var lastReport = null;
+
+			$btn.on( 'click', function () {
+				$btn.prop( 'disabled', true );
+				$spinner.css( 'visibility', 'visible' );
+				$result.hide();
+				$grid.empty();
+				$download.hide();
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_run_diagnostics',
+					{},
+					function ( response ) {
+						$btn.prop( 'disabled', false );
+						$spinner.css( 'visibility', 'hidden' );
+
+						if ( ! response.success ) {
+							$grid.html( '<p style="color:var(--tsh-wa-red);">' + TSHWaAdmin.esc( tshWaAdmin.i18n.error || 'Diagnostics failed.' ) + '</p>' );
+							$result.show();
+							return;
+						}
+
+						var data   = response.data;
+						lastReport = data;
+
+						$.each( data.checks, function ( key, check ) {
+							var statusClass = 'tsh-wa-diag-card--' + ( check.status || 'ok' );
+							var icon = 'ok' === check.status ? 'dashicons-yes-alt' : ( 'warning' === check.status ? 'dashicons-warning' : 'dashicons-dismiss' );
+							var $card = $(
+								'<div class="tsh-wa-diag-card ' + statusClass + '">' +
+								'<div class="tsh-wa-diag-card__icon"><span class="dashicons ' + icon + '"></span></div>' +
+								'<div class="tsh-wa-diag-card__body">' +
+								'<strong class="tsh-wa-diag-card__label">' + TSHWaAdmin.esc( check.label ) + '</strong>' +
+								'<span class="tsh-wa-diag-card__value">' + TSHWaAdmin.esc( check.value ) + '</span>' +
+								( check.detail ? '<span class="tsh-wa-diag-card__detail">' + TSHWaAdmin.esc( check.detail ) + '</span>' : '' ) +
+								'</div>' +
+								'</div>'
+							);
+							$grid.append( $card );
+						} );
+
+						$result.show();
+						$download.show();
+					},
+					function () {
+						$btn.prop( 'disabled', false );
+						$spinner.css( 'visibility', 'hidden' );
+						$grid.html( '<p style="color:var(--tsh-wa-red);">' + TSHWaAdmin.esc( tshWaAdmin.i18n.error || 'Request failed.' ) + '</p>' );
+						$result.show();
+					}
+				);
+			} );
+
+			// Download report as JSON file.
+			$download.on( 'click', function () {
+				if ( ! lastReport ) { return; }
+
+				var json     = JSON.stringify( lastReport, null, 2 );
+				var blob     = new Blob( [ json ], { type: 'application/json' } );
+				var url      = URL.createObjectURL( blob );
+				var $a       = $( '<a href="' + url + '" download="' + TSHWaAdmin.esc( lastReport.filename || 'tsh-wa-diagnostics.json' ) + '" style="display:none;"></a>' );
+				$( 'body' ).append( $a );
+				$a[0].click();
+				$a.remove();
+				setTimeout( function () { URL.revokeObjectURL( url ); }, 5000 );
+			} );
+		},
+
+		// -----------------------------------------------------------------------
+		// PHASE 2 — Export / Reset API Settings
+		// -----------------------------------------------------------------------
+
+		initApiSettingsActions: function () {
+			// Export.
+			$( '#tsh-wa-btn-export' ).on( 'click', function () {
+				TSHWaAdmin.ajax(
+					'tsh_wa_export_api_settings',
+					{},
+					function ( response ) {
+						if ( ! response.success ) { return; }
+						var d    = response.data;
+						var json = JSON.stringify( d.settings, null, 2 );
+						var blob = new Blob( [ json ], { type: 'application/json' } );
+						var url  = URL.createObjectURL( blob );
+						var $a   = $( '<a href="' + url + '" download="' + d.filename + '" style="display:none;"></a>' );
+						$( 'body' ).append( $a );
+						$a[0].click();
+						$a.remove();
+						setTimeout( function () { URL.revokeObjectURL( url ); }, 5000 );
+					}
+				);
+			} );
+
+			// Reset.
+			$( '#tsh-wa-btn-reset' ).on( 'click', function () {
+				// confirm is handled by initConfirmForms — but we also need direct handler.
+				var confirmed = window.confirm(
+					$( this ).data( 'tsh-wa-confirm' ) ||
+					( tshWaAdmin.i18n.confirm_reset || 'Reset all API settings to defaults?' )
+				);
+				if ( ! confirmed ) { return; }
+
+				var $btn = $( this );
+				$btn.prop( 'disabled', true );
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_reset_api_settings',
+					{},
+					function ( response ) {
+						$btn.prop( 'disabled', false );
+						if ( response.success ) {
+							window.alert( response.data.message || 'Settings reset.' );
+							window.location.reload();
+						} else {
+							window.alert( tshWaAdmin.i18n.error || 'Reset failed.' );
+						}
+					},
+					function () {
+						$btn.prop( 'disabled', false );
+						window.alert( tshWaAdmin.i18n.error || 'Request failed.' );
+					}
+				);
+			} );
+		},
+
+		// -----------------------------------------------------------------------
+		// PHASE 2 — Health Refresh (dashboard & settings)
+		// -----------------------------------------------------------------------
+
+		initHealthRefresh: function () {
+			$( document ).on( 'click', '#tsh-wa-refresh-health, #tsh-wa-btn-refresh-health', function () {
+				var $btn = $( this );
+				$btn.prop( 'disabled', true );
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_refresh_health',
+					{},
+					function ( response ) {
+						$btn.prop( 'disabled', false );
+						if ( response.success ) {
+							// Simple reload to refresh the dashboard panel.
+							window.location.reload();
+						} else {
+							window.alert( tshWaAdmin.i18n.error || 'Refresh failed.' );
+						}
+					},
+					function () {
+						$btn.prop( 'disabled', false );
+					}
+				);
+			} );
+		},
+
+		// -----------------------------------------------------------------------
+		// Utility: show an AJAX result notice
+		// -----------------------------------------------------------------------
+
+		/**
+		 * Show a success or error message in an .tsh-wa-ajax-result container.
+		 *
+		 * @param {jQuery}  $container Target element.
+		 * @param {boolean} success    True = success (green), false = error (red).
+		 * @param {string}  message    Plain-text message (will be HTML-escaped).
+		 */
+		showAjaxResult: function ( $container, success, message ) {
+			$container
+				.removeClass( 'tsh-wa-ajax-result--success tsh-wa-ajax-result--error' )
+				.addClass( success ? 'tsh-wa-ajax-result--success' : 'tsh-wa-ajax-result--error' )
+				.html( '<pre style="margin:0;white-space:pre-wrap;word-break:break-all;">' + TSHWaAdmin.esc( message ) + '</pre>' )
+				.show();
+		},
+
+		// -----------------------------------------------------------------------
+		// Utility: HTML-escape a string
+		// -----------------------------------------------------------------------
+
+		esc: function ( str ) {
+			return String( str )
+				.replace( /&/g, '&amp;' )
+				.replace( /</g, '&lt;' )
+				.replace( />/g, '&gt;' )
+				.replace( /"/g, '&quot;' )
+				.replace( /'/g, '&#039;' );
+		},
+
+		// -----------------------------------------------------------------------
+		// AJAX helper (shared)
 		// -----------------------------------------------------------------------
 
 		/**
@@ -186,7 +636,7 @@
 				url:    tshWaAdmin.ajaxUrl,
 				method: 'POST',
 				data:   $.extend( {}, data, {
-					action:    action,
+					action:      action,
 					_ajax_nonce: tshWaAdmin.nonce,
 				} ),
 				success: function ( response ) {

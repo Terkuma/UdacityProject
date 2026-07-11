@@ -34,6 +34,7 @@ $tables = [
 	$wpdb->prefix . 'tsh_wa_queue',
 	$wpdb->prefix . 'tsh_wa_templates',
 	$wpdb->prefix . 'tsh_wa_settings',
+	$wpdb->prefix . 'tsh_wa_api_requests',  // Phase 2
 ];
 
 foreach ( $tables as $table ) {
@@ -58,10 +59,24 @@ $options = [
 	'tsh_wa_advanced_settings',
 	'tsh_wa_remove_data_on_uninstall',
 	'tsh_wa_activation_date',
+	// Phase 2 — API health history.
+	'tsh_wa_api_health_history',
 ];
 
 foreach ( $options as $option ) {
 	delete_option( $option );
+}
+
+// ---------------------------------------------------------------------------
+// Delete plugin transients
+// ---------------------------------------------------------------------------
+
+$transients = [
+	'tsh_wa_api_health_status',  // Phase 2 — 10-min cached health check.
+];
+
+foreach ( $transients as $transient ) {
+	delete_transient( $transient );
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +88,7 @@ $cron_hooks = [
 	'tsh_wa_retry_failed',
 	'tsh_wa_prune_logs',
 	'tsh_wa_health_check',
+	'tsh_wa_cron_health_check',  // Phase 2 — HealthMonitor cron action.
 ];
 
 foreach ( $cron_hooks as $hook ) {

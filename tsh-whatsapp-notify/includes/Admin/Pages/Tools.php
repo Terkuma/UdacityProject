@@ -13,7 +13,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use TSH\WhatsAppNotify\API\ConnectionTester;
 use TSH\WhatsAppNotify\Database\Installer;
+use TSH\WhatsAppNotify\Helpers\Helpers;
 use TSH\WhatsAppNotify\Logger\Logger;
 use TSH\WhatsAppNotify\Queue\Queue;
 
@@ -35,11 +37,20 @@ final class Tools {
 
 		$notice = $this->handle_actions();
 
+		$api_settings    = get_option( 'tsh_wa_api_settings', [] );
+		$test_phone      = sanitize_text_field( $api_settings['test_phone_number'] ?? '' );
+		$is_debug        = Helpers::is_debug_mode();
+
 		$template = TSH_WA_PATH . 'templates/admin/tools.php';
 
 		if ( file_exists( $template ) ) {
+			$template_vars = [
+				'tool_notice' => $notice,
+				'test_phone'  => $test_phone,
+				'is_debug'    => $is_debug,
+			];
 			// phpcs:ignore WordPress.PHP.DontExtract.extract_extract
-			extract( [ 'tool_notice' => $notice ], EXTR_SKIP );
+			extract( $template_vars, EXTR_SKIP );
 			include $template;
 		}
 	}
@@ -69,10 +80,12 @@ final class Tools {
 		$tool = sanitize_key( wp_unslash( $_POST['tsh_wa_tool'] ) );
 
 		return match ( $tool ) {
-			'repair_db'   => $this->tool_repair_db(),
-			'clear_queue' => $this->tool_clear_queue(),
-			'clear_logs'  => $this->tool_clear_logs(),
-			default       => [
+			'repair_db'            => $this->tool_repair_db(),
+			'clear_queue'          => $this->tool_clear_queue(),
+			'clear_logs'           => $this->tool_clear_logs(),
+			'clear_api_requests'   => $this->tool_clear_api_requests(),
+			'bust_health_cache'    => $this->tool_bust_health_cache(),
+			default                => [
 				'type'    => 'error',
 				'message' => __( 'Unknown tool action.', 'tsh-whatsapp-notify' ),
 			],
@@ -116,12 +129,44 @@ final class Tools {
 	 * @return array<string, string>
 	 */
 	private function tool_clear_logs(): array {
-		$logger  = new Logger();
-		$cleared = $logger->clear_all();
+		$logger = new Logger();
+		$logger->clear_all();
 
 		return [
 			'type'    => 'success',
 			'message' => __( 'All log entries cleared.', 'tsh-whatsapp-notify' ),
+		];
+	}
+
+	/**
+	 * Clear the API requests log table.
+	 *
+	 * @return array<string, string>
+	 */
+	private function tool_clear_api_requests(): array {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'tsh_wa_api_requests';
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( "TRUNCATE TABLE `{$table}`" );
+
+		return [
+			'type'    => 'success',
+			'message' => __( 'API request log cleared.', 'tsh-whatsapp-notify' ),
+		];
+	}
+
+	/**
+	 * Delete the API health-status transient to force a fresh check.
+	 *
+	 * @return array<string, string>
+	 */
+	private function tool_bust_health_cache(): array {
+		delete_transient( 'tsh_wa_api_health_status' );
+
+		return [
+			'type'    => 'success',
+			'message' => __( 'API health cache cleared. The next dashboard load will trigger a fresh check.', 'tsh-whatsapp-notify' ),
 		];
 	}
 }
