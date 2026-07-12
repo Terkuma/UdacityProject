@@ -67,6 +67,6 @@ class Automation {
 		$settings = get_option( 'tsh_wa_automation_settings', [] );
 
 		// Pass everything to the template via include.
-		include TSH_WA_PLUGIN_DIR . 'templates/admin/automation.php';
+		include TSH_WA_PATH . 'templates/admin/automation.php';
 	}
 }

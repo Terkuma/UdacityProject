@@ -256,6 +256,23 @@ final class Menu {
 			true
 		);
 
+		// Phase 7 — Automation-specific assets (only on the automation page).
+		if ( str_contains( $hook_suffix, self::SLUG_AUTOMATION ) ) {
+			wp_enqueue_style(
+				'tsh-wa-automation',
+				TSH_WA_URL . 'assets/css/automation.css',
+				[ 'tsh-wa-admin' ],
+				TSH_WA_VERSION
+			);
+			wp_enqueue_script(
+				'tsh-wa-automation',
+				TSH_WA_URL . 'assets/js/automation.js',
+				[ 'jquery', 'tsh-wa-admin' ],
+				TSH_WA_VERSION,
+				true
+			);
+		}
+
 		// Localise script data.
 		wp_localize_script(
 			'tsh-wa-admin',
