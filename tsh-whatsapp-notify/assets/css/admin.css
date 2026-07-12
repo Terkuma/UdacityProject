@@ -1744,4 +1744,47 @@ details[open] > .tsh-wa-mb-preview__summary::before {
 	transition: opacity 0.3s;
 }
 
+/* --- Spin animation (dashicons loading state) ----------------------------- */
+@keyframes tsh-wa-spin {
+	from { transform: rotate( 0deg ); }
+	to   { transform: rotate( 360deg ); }
+}
+
+.tsh-wa-spin {
+	display: inline-block;
+	animation: tsh-wa-spin 1s linear infinite;
+}
+
+/* --- Meta-box: copy button ------------------------------------------------ */
+.tsh-wa-mb-copy {
+	flex-shrink: 0;
+}
+
+.tsh-wa-mb-copy:focus {
+	outline: 2px solid var(--tsh-wa-primary);
+	outline-offset: 2px;
+}
+
+/* --- Meta-box: queue action button ---------------------------------------- */
+.tsh-wa-mb-queue-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.tsh-wa-mb-queue-btn:disabled,
+.tsh-wa-mb-queue-btn[disabled] {
+	opacity: 0.5;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+
+/* --- Meta-box: resend button ----------------------------------------------- */
+.tsh-wa-mb-resend-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: auto;
+}
+
 
