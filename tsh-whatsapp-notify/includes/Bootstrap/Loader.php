@@ -22,6 +22,7 @@ use TSH\WhatsAppNotify\Database\Installer;
 use TSH\WhatsAppNotify\Orders\OrderListener;
 use TSH\WhatsAppNotify\Orders\OrderStatusListener;
 use TSH\WhatsAppNotify\Queue\QueueProcessor;
+use TSH\WhatsAppNotify\Automation\AutomationEngine;
 use TSH\WhatsAppNotify\Inbox\InboxManager;
 use TSH\WhatsAppNotify\Templates\TemplateManager;
 use TSH\WhatsAppNotify\Templates\TemplateSync;
@@ -133,6 +134,10 @@ final class Loader {
 		// Phase 6: Inbox / Conversation hub — webhook receiver + media downloader.
 		$this->components['inbox_manager'] = new InboxManager();
 		$this->components['inbox_manager']->register_hooks();
+
+		// Phase 7: Automation Engine — trigger hooks + cron scheduler.
+		$this->components['automation'] = AutomationEngine::get_instance();
+		$this->components['automation']->register_hooks();
 
 		// Admin-only components — never loaded on the frontend.
 		if ( is_admin() ) {

@@ -42,6 +42,9 @@ $tables = [
 	$wpdb->prefix . 'tsh_wa_meta_templates',       // Phase 5
 	$wpdb->prefix . 'tsh_wa_messages',             // Phase 6
 	$wpdb->prefix . 'tsh_wa_conversations',        // Phase 6
+	$wpdb->prefix . 'tsh_wa_workflow_logs',        // Phase 7
+	$wpdb->prefix . 'tsh_wa_workflow_runs',        // Phase 7
+	$wpdb->prefix . 'tsh_wa_workflows',            // Phase 7
 ];
 
 foreach ( $tables as $table ) {
@@ -83,6 +86,9 @@ $options = [
 	// Phase 6 — Inbox / Conversation Hub.
 	'tsh_wa_inbox_settings',             // InboxManager settings
 	'tsh_wa_inbox_cache_keys',           // ConversationCache::REGISTRY_OPTION
+	// Phase 7 — Automation Engine.
+	'tsh_wa_automation_settings',        // AutomationEngine settings
+	'tsh_wa_wf_queue',                   // WorkflowQueue::QUEUE_OPTION
 ];
 
 foreach ( $options as $option ) {
@@ -148,6 +154,10 @@ $cron_hooks = [
 	'tsh_wa_background_template_sync',     // Phase 5 — one-shot background sync.
 	'tsh_wa_download_media',               // Phase 6 — media downloader cron.
 	'tsh_wa_archive_conversations',        // Phase 6 — auto-archive stale conversations.
+	'tsh_wa_automation_process',           // Phase 7 — workflow run processor.
+	'tsh_wa_automation_resume',            // Phase 7 — delayed workflow resume.
+	'tsh_wa_automation_prune',             // Phase 7 — log/run pruning.
+	'tsh_wa_automation_queue_process',     // Phase 7 — queue drainer.
 ];
 
 foreach ( $cron_hooks as $hook ) {

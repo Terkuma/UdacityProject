@@ -187,6 +187,18 @@ final class Activator {
 
 		$defaults['tsh_wa_admin_recipients'] = [];
 
+		// Phase 7 — Automation Engine settings.
+		$defaults['tsh_wa_automation_settings'] = [
+			'enabled'                => '1',
+			'max_concurrent_runs'    => '5',
+			'max_retries'            => '3',
+			'dedup_window_seconds'   => '3600',
+			'log_retention_days'     => '30',
+			'run_retention_days'     => '60',
+			'debug_mode'             => '0',
+			'execution_timeout_secs' => '60',
+		];
+
 		// Phase 6 — Inbox / Conversation Hub settings.
 		$defaults['tsh_wa_inbox_settings'] = [
 			'auto_download_media'   => '1',

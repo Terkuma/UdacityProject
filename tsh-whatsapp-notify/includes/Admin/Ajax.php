@@ -26,6 +26,14 @@ use TSH\WhatsAppNotify\Queue\DeadLetterQueue;
 use TSH\WhatsAppNotify\Queue\QueueProcessor;
 use TSH\WhatsAppNotify\Queue\QueueStats;
 use TSH\WhatsAppNotify\Queue\RateLimiter;
+use TSH\WhatsAppNotify\Automation\AutomationEngine;
+use TSH\WhatsAppNotify\Automation\AutomationAnalytics;
+use TSH\WhatsAppNotify\Automation\ExecutionHistory;
+use TSH\WhatsAppNotify\Automation\WorkflowExporter;
+use TSH\WhatsAppNotify\Automation\WorkflowImporter;
+use TSH\WhatsAppNotify\Automation\WorkflowRepository;
+use TSH\WhatsAppNotify\Automation\WorkflowRunner;
+use TSH\WhatsAppNotify\Automation\WorkflowValidator;
 use TSH\WhatsAppNotify\Inbox\InboxManager;
 use TSH\WhatsAppNotify\Templates\TemplateAssignment;
 use TSH\WhatsAppNotify\Templates\TemplateExporter;
@@ -80,6 +88,27 @@ final class Ajax {
 			'tsh_wa_dlq_clear',
 			'tsh_wa_queue_export',
 			'tsh_wa_queue_retry_all',
+			// Phase 7 — Workflow Automation Engine.
+			'tsh_wa_wf_list',
+			'tsh_wa_wf_get',
+			'tsh_wa_wf_create',
+			'tsh_wa_wf_update',
+			'tsh_wa_wf_delete',
+			'tsh_wa_wf_activate',
+			'tsh_wa_wf_deactivate',
+			'tsh_wa_wf_duplicate',
+			'tsh_wa_wf_test_run',
+			'tsh_wa_wf_history',
+			'tsh_wa_wf_run_detail',
+			'tsh_wa_wf_analytics',
+			'tsh_wa_wf_export',
+			'tsh_wa_wf_import',
+			'tsh_wa_wf_import_template',
+			'tsh_wa_wf_get_templates',
+			'tsh_wa_wf_validate',
+			'tsh_wa_wf_get_variables',
+			'tsh_wa_wf_save_settings',
+			'tsh_wa_wf_get_queue_depth',
 			// Phase 6 — Inbox / Conversation Hub.
 			'tsh_wa_inbox_get_conversations',
 			'tsh_wa_inbox_get_conversation',
@@ -1179,6 +1208,471 @@ final class Ajax {
 
 		$manager = new TemplateManager();
 		wp_send_json_success( $manager->get_dashboard_overview() );
+	}
+
+	// =========================================================================
+	// Phase 7 — Workflow Automation Engine handlers
+	// =========================================================================
+
+	/**
+	 * AJAX: tsh_wa_wf_list — paginated workflow list.
+	 */
+	public function handle_tsh_wa_wf_list(): void {
+		$this->verify_request();
+
+		$repo   = new WorkflowRepository();
+		$args   = [
+			'status'   => sanitize_key( $_POST['status'] ?? 'all' ),
+			'search'   => sanitize_text_field( $_POST['search'] ?? '' ),
+			'page'     => absint( $_POST['page'] ?? 1 ),
+			'per_page' => min( 100, absint( $_POST['per_page'] ?? 20 ) ),
+		];
+
+		wp_send_json_success( $repo->get_workflows( $args ) );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_get — single workflow detail.
+	 */
+	public function handle_tsh_wa_wf_get(): void {
+		$this->verify_request();
+
+		$id   = absint( $_POST['workflow_id'] ?? 0 );
+		$repo = new WorkflowRepository();
+		$wf   = $repo->get_workflow( $id );
+
+		if ( ! $wf ) {
+			wp_send_json_error( [ 'message' => __( 'Workflow not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		wp_send_json_success( $wf );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_create — create a new workflow.
+	 */
+	public function handle_tsh_wa_wf_create(): void {
+		$this->verify_request();
+
+		$data = [
+			'name'           => sanitize_text_field( $_POST['name'] ?? 'Untitled Workflow' ),
+			'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ),
+			'status'         => 'draft',
+			'trigger_type'   => sanitize_key( $_POST['trigger_type'] ?? '' ),
+			'trigger_config' => $this->decode_json_post( 'trigger_config' ),
+			'nodes'          => $this->decode_json_post( 'nodes' ),
+			'edges'          => $this->decode_json_post( 'edges' ),
+			'settings'       => $this->decode_json_post( 'settings' ),
+			'created_by'     => get_current_user_id(),
+		];
+
+		$validator = new WorkflowValidator();
+		$valid     = $validator->validate( $data );
+
+		if ( ! $valid['valid'] ) {
+			wp_send_json_error( [ 'message' => implode( ' ', $valid['errors'] ) ] );
+		}
+
+		$repo = new WorkflowRepository();
+		$id   = $repo->create_workflow( $data );
+
+		if ( ! $id ) {
+			wp_send_json_error( [ 'message' => __( 'Failed to create workflow.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		AutomationEngine::flush_trigger_cache();
+
+		wp_send_json_success( [ 'workflow_id' => $id, 'message' => __( 'Workflow created.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_update — save workflow graph + settings.
+	 */
+	public function handle_tsh_wa_wf_update(): void {
+		$this->verify_request();
+
+		$id = absint( $_POST['workflow_id'] ?? 0 );
+		if ( ! $id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid workflow ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$data = [];
+
+		if ( isset( $_POST['name'] ) ) {
+			$data['name'] = sanitize_text_field( $_POST['name'] );
+		}
+		if ( isset( $_POST['description'] ) ) {
+			$data['description'] = sanitize_textarea_field( $_POST['description'] );
+		}
+		if ( isset( $_POST['trigger_type'] ) ) {
+			$data['trigger_type'] = sanitize_key( $_POST['trigger_type'] );
+		}
+		if ( isset( $_POST['trigger_config'] ) ) {
+			$data['trigger_config'] = $this->decode_json_post( 'trigger_config' );
+		}
+		if ( isset( $_POST['nodes'] ) ) {
+			$data['nodes'] = $this->decode_json_post( 'nodes' );
+		}
+		if ( isset( $_POST['edges'] ) ) {
+			$data['edges'] = $this->decode_json_post( 'edges' );
+		}
+		if ( isset( $_POST['settings'] ) ) {
+			$data['settings'] = $this->decode_json_post( 'settings' );
+		}
+
+		$repo = new WorkflowRepository();
+		$ok   = $repo->update_workflow( $id, $data );
+
+		AutomationEngine::flush_trigger_cache();
+
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Workflow saved.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Save failed.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_delete
+	 */
+	public function handle_tsh_wa_wf_delete(): void {
+		$this->verify_request();
+
+		$id   = absint( $_POST['workflow_id'] ?? 0 );
+		$repo = new WorkflowRepository();
+		$ok   = $repo->delete_workflow( $id );
+
+		AutomationEngine::flush_trigger_cache();
+
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Workflow deleted.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Delete failed.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_activate
+	 */
+	public function handle_tsh_wa_wf_activate(): void {
+		$this->verify_request();
+
+		$id   = absint( $_POST['workflow_id'] ?? 0 );
+		$repo = new WorkflowRepository();
+
+		// Validate before activating.
+		$wf = $repo->get_workflow( $id );
+		if ( ! $wf ) {
+			wp_send_json_error( [ 'message' => __( 'Workflow not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$validator = new WorkflowValidator();
+		$valid     = $validator->validate( $wf );
+
+		if ( ! $valid['valid'] ) {
+			wp_send_json_error( [ 'message' => __( 'Cannot activate: ', 'tsh-whatsapp-notify' ) . implode( ' ', $valid['errors'] ) ] );
+		}
+
+		$ok = $repo->update_workflow( $id, [ 'status' => 'active' ] );
+		AutomationEngine::flush_trigger_cache();
+
+		$ok
+			? wp_send_json_success( [ 'message' => __( 'Workflow activated.', 'tsh-whatsapp-notify' ) ] )
+			: wp_send_json_error( [ 'message' => __( 'Activation failed.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_deactivate
+	 */
+	public function handle_tsh_wa_wf_deactivate(): void {
+		$this->verify_request();
+
+		$id   = absint( $_POST['workflow_id'] ?? 0 );
+		$repo = new WorkflowRepository();
+		$ok   = $repo->update_workflow( $id, [ 'status' => 'inactive' ] );
+
+		AutomationEngine::flush_trigger_cache();
+
+		$ok
+			? wp_send_json_success( [ 'message' => __( 'Workflow deactivated.', 'tsh-whatsapp-notify' ) ] )
+			: wp_send_json_error( [ 'message' => __( 'Deactivation failed.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_duplicate
+	 */
+	public function handle_tsh_wa_wf_duplicate(): void {
+		$this->verify_request();
+
+		$id   = absint( $_POST['workflow_id'] ?? 0 );
+		$repo = new WorkflowRepository();
+		$wf   = $repo->get_workflow( $id );
+
+		if ( ! $wf ) {
+			wp_send_json_error( [ 'message' => __( 'Workflow not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		unset( $wf['id'], $wf['run_count'], $wf['last_run_at'], $wf['created_at'], $wf['updated_at'] );
+		/* translators: %s: original workflow name */
+		$wf['name']   = sprintf( __( '%s (Copy)', 'tsh-whatsapp-notify' ), $wf['name'] );
+		$wf['status'] = 'draft';
+
+		$new_id = $repo->create_workflow( $wf );
+
+		if ( $new_id ) {
+			wp_send_json_success( [ 'workflow_id' => $new_id, 'message' => __( 'Workflow duplicated.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Duplicate failed.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_test_run — run a workflow immediately with test data.
+	 */
+	public function handle_tsh_wa_wf_test_run(): void {
+		$this->verify_request();
+
+		$id           = absint( $_POST['workflow_id'] ?? 0 );
+		$trigger_data = $this->decode_json_post( 'trigger_data' );
+
+		if ( ! $id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid workflow ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		// Force an immediate synchronous run (bypass status check).
+		$repo = new WorkflowRepository();
+		$repo->update_workflow( $id, [ 'status' => 'active' ] ); // temp
+
+		$runner = new WorkflowRunner();
+		$result = $runner->run( $id, array_merge( $trigger_data, [ '_test_run' => true ] ) );
+
+		// Restore original status.
+		$wf = $repo->get_workflow( $id );
+		if ( $wf && ! in_array( $wf['status'], [ 'active', 'inactive' ], true ) ) {
+			$repo->update_workflow( $id, [ 'status' => 'draft' ] );
+		}
+
+		if ( $result['success'] ) {
+			wp_send_json_success( [
+				'run_id'  => $result['run_id'],
+				/* translators: %d: run ID */
+				'message' => sprintf( __( 'Test run completed (Run #%d).', 'tsh-whatsapp-notify' ), $result['run_id'] ),
+			] );
+		} else {
+			wp_send_json_error( [
+				'run_id'  => $result['run_id'],
+				'message' => $result['error'] ?: __( 'Test run failed.', 'tsh-whatsapp-notify' ),
+			] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_history — paginated run history.
+	 */
+	public function handle_tsh_wa_wf_history(): void {
+		$this->verify_request();
+
+		$history = new ExecutionHistory();
+		$wf_id   = absint( $_POST['workflow_id'] ?? 0 );
+
+		wp_send_json_success( $history->get_history( $wf_id, [
+			'page'     => absint( $_POST['page'] ?? 1 ),
+			'per_page' => min( 100, absint( $_POST['per_page'] ?? 20 ) ),
+			'status'   => sanitize_key( $_POST['status'] ?? '' ),
+		] ) );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_run_detail — single run with logs.
+	 */
+	public function handle_tsh_wa_wf_run_detail(): void {
+		$this->verify_request();
+
+		$run_id  = absint( $_POST['run_id'] ?? 0 );
+		$history = new ExecutionHistory();
+		$detail  = $history->get_run_detail( $run_id );
+
+		if ( ! $detail ) {
+			wp_send_json_error( [ 'message' => __( 'Run not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		wp_send_json_success( $detail );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_analytics — overview analytics.
+	 */
+	public function handle_tsh_wa_wf_analytics(): void {
+		$this->verify_request();
+
+		$analytics = new AutomationAnalytics();
+		$days      = absint( $_POST['days'] ?? 30 );
+
+		wp_send_json_success( $analytics->get_overview( max( 1, min( 365, $days ) ) ) );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_export — export workflows as JSON.
+	 */
+	public function handle_tsh_wa_wf_export(): void {
+		$this->verify_request();
+
+		$ids_raw = $_POST['workflow_ids'] ?? [];
+		$ids     = is_array( $ids_raw ) ? array_map( 'absint', $ids_raw ) : [];
+
+		$exporter = new WorkflowExporter();
+		$json     = $exporter->export( $ids );
+
+		wp_send_json_success( [
+			'json'     => $json,
+			'filename' => 'tsh-wa-workflows-' . gmdate( 'Y-m-d' ) . '.json',
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_import — import workflows from JSON.
+	 */
+	public function handle_tsh_wa_wf_import(): void {
+		$this->verify_request();
+
+		$json     = wp_unslash( $_POST['json'] ?? '' );
+		$mode     = sanitize_key( $_POST['mode'] ?? 'merge' );
+		$importer = new WorkflowImporter();
+		$result   = $importer->import( $json, $mode );
+
+		AutomationEngine::flush_trigger_cache();
+
+		if ( $result['errors'] > 0 && 0 === $result['imported'] ) {
+			wp_send_json_error( $result );
+		} else {
+			wp_send_json_success( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_import_template — import a built-in template.
+	 */
+	public function handle_tsh_wa_wf_import_template(): void {
+		$this->verify_request();
+
+		$key      = sanitize_key( $_POST['template_key'] ?? '' );
+		$importer = new WorkflowImporter();
+		$id       = $importer->import_template( $key );
+
+		if ( $id ) {
+			wp_send_json_success( [
+				'workflow_id' => $id,
+				'message'     => __( 'Template imported as a draft workflow.', 'tsh-whatsapp-notify' ),
+			] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Template not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_get_templates — return template library.
+	 */
+	public function handle_tsh_wa_wf_get_templates(): void {
+		$this->verify_request();
+
+		$templates = WorkflowExporter::get_templates();
+
+		// Strip full node/edge data for the list view; client fetches detail on demand.
+		$preview = [];
+		foreach ( $templates as $key => $tpl ) {
+			$preview[ $key ] = [
+				'key'          => $key,
+				'name'         => $tpl['name'],
+				'description'  => $tpl['description'],
+				'trigger_type' => $tpl['trigger_type'],
+				'node_count'   => count( $tpl['nodes'] ),
+			];
+		}
+
+		wp_send_json_success( [ 'templates' => array_values( $preview ) ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_validate — validate workflow definition.
+	 */
+	public function handle_tsh_wa_wf_validate(): void {
+		$this->verify_request();
+
+		$data = [
+			'name'         => sanitize_text_field( $_POST['name'] ?? '' ),
+			'trigger_type' => sanitize_key( $_POST['trigger_type'] ?? '' ),
+			'nodes'        => $this->decode_json_post( 'nodes' ),
+			'edges'        => $this->decode_json_post( 'edges' ),
+		];
+
+		$validator = new WorkflowValidator();
+		$result    = $validator->validate( $data );
+
+		if ( $result['valid'] ) {
+			wp_send_json_success( [ 'message' => __( 'Workflow is valid.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'errors' => $result['errors'] ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_get_variables — available template variables.
+	 */
+	public function handle_tsh_wa_wf_get_variables(): void {
+		$this->verify_request();
+
+		wp_send_json_success( [
+			'variables' => \TSH\WhatsAppNotify\Automation\VariableResolver::get_available_variables(),
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_save_settings — save automation global settings.
+	 */
+	public function handle_tsh_wa_wf_save_settings(): void {
+		$this->verify_request();
+
+		$settings = [
+			'enabled'                => ! empty( $_POST['enabled'] ) ? '1' : '0',
+			'max_concurrent_runs'    => absint( $_POST['max_concurrent_runs'] ?? 5 ),
+			'max_retries'            => absint( $_POST['max_retries'] ?? 3 ),
+			'dedup_window_seconds'   => absint( $_POST['dedup_window_seconds'] ?? 3600 ),
+			'log_retention_days'     => absint( $_POST['log_retention_days'] ?? 30 ),
+			'run_retention_days'     => absint( $_POST['run_retention_days'] ?? 60 ),
+			'debug_mode'             => ! empty( $_POST['debug_mode'] ) ? '1' : '0',
+			'execution_timeout_secs' => absint( $_POST['execution_timeout_secs'] ?? 60 ),
+		];
+
+		update_option( 'tsh_wa_automation_settings', $settings );
+		AutomationEngine::flush_trigger_cache();
+
+		wp_send_json_success( [ 'message' => __( 'Settings saved.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_wf_get_queue_depth — current background queue depth.
+	 */
+	public function handle_tsh_wa_wf_get_queue_depth(): void {
+		$this->verify_request();
+
+		$queue = new \TSH\WhatsAppNotify\Automation\WorkflowQueue();
+
+		wp_send_json_success( [ 'depth' => $queue->get_queue_depth() ] );
+	}
+
+	/**
+	 * Decode a JSON-encoded POST field into an array.
+	 *
+	 * @param string $key
+	 * @return array
+	 */
+	private function decode_json_post( string $key ): array {
+		$raw = wp_unslash( $_POST[ $key ] ?? '' );
+		if ( is_array( $raw ) ) {
+			return $raw;
+		}
+		$decoded = json_decode( (string) $raw, true );
+		return is_array( $decoded ) ? $decoded : [];
 	}
 
 	// -------------------------------------------------------------------------

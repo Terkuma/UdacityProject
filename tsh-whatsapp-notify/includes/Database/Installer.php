@@ -35,7 +35,7 @@ final class Installer {
 	 * Current database schema version.
 	 * Increment this constant whenever tables are altered.
 	 */
-	public const DB_VERSION = '6.0.0';
+	public const DB_VERSION = '7.0.0';
 
 	/**
 	 * Run the installer — create or upgrade all tables.
@@ -370,6 +370,75 @@ final class Installer {
 			KEY               idx_status          (status),
 			KEY               idx_message_type    (message_type),
 			KEY               idx_is_note         (is_note)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Workflows table (Phase 7)
+		// ------------------------------------------------------------------
+		$workflows = $wpdb->prefix . 'tsh_wa_workflows';
+		$sql[] = "CREATE TABLE {$workflows} (
+			id               BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			name             VARCHAR(200)         NOT NULL                    COMMENT 'Workflow display name',
+			description      TEXT                          DEFAULT NULL,
+			status           VARCHAR(20)          NOT NULL DEFAULT 'draft'    COMMENT 'active|inactive|draft',
+			trigger_type     VARCHAR(100)         NOT NULL DEFAULT ''         COMMENT 'Trigger key from TriggerManager',
+			trigger_config   LONGTEXT                      DEFAULT NULL       COMMENT 'JSON trigger configuration',
+			nodes            LONGTEXT                      DEFAULT NULL       COMMENT 'JSON node graph array',
+			edges            LONGTEXT                      DEFAULT NULL       COMMENT 'JSON edge connections array',
+			settings         LONGTEXT                      DEFAULT NULL       COMMENT 'JSON per-workflow settings',
+			run_count        BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			last_run_at      DATETIME                      DEFAULT NULL,
+			created_by       BIGINT(20) UNSIGNED           DEFAULT NULL       COMMENT 'WP user ID',
+			created_at       DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at       DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY      (id),
+			KEY              idx_status        (status),
+			KEY              idx_trigger_type  (trigger_type),
+			KEY              idx_created_by    (created_by),
+			KEY              idx_last_run_at   (last_run_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Workflow runs table (Phase 7) — one row per execution
+		// ------------------------------------------------------------------
+		$runs = $wpdb->prefix . 'tsh_wa_workflow_runs';
+		$sql[] = "CREATE TABLE {$runs} (
+			id                  BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			workflow_id         BIGINT(20) UNSIGNED  NOT NULL,
+			trigger_type        VARCHAR(100)         NOT NULL DEFAULT '',
+			trigger_data        LONGTEXT                      DEFAULT NULL   COMMENT 'JSON trigger payload',
+			status              VARCHAR(20)          NOT NULL DEFAULT 'pending' COMMENT 'pending|running|completed|failed|cancelled',
+			started_at          DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			completed_at        DATETIME                      DEFAULT NULL,
+			execution_time_ms   INT(10) UNSIGNED              DEFAULT NULL,
+			steps_completed     INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			error_message       TEXT                          DEFAULT NULL,
+			context             LONGTEXT                      DEFAULT NULL   COMMENT 'JSON execution context (step outputs, etc.)',
+			PRIMARY KEY         (id),
+			KEY                 idx_workflow_id   (workflow_id),
+			KEY                 idx_status        (status),
+			KEY                 idx_started_at    (started_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Workflow logs table (Phase 7) — per-node execution log entries
+		// ------------------------------------------------------------------
+		$logs = $wpdb->prefix . 'tsh_wa_workflow_logs';
+		$sql[] = "CREATE TABLE {$logs} (
+			id           BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			run_id       BIGINT(20) UNSIGNED  NOT NULL,
+			workflow_id  BIGINT(20) UNSIGNED  NOT NULL,
+			node_id      VARCHAR(100)                  DEFAULT NULL,
+			node_type    VARCHAR(100)                  DEFAULT NULL,
+			level        VARCHAR(20)          NOT NULL DEFAULT 'info'   COMMENT 'info|warning|error|debug',
+			message      TEXT                 NOT NULL,
+			data         LONGTEXT                      DEFAULT NULL     COMMENT 'JSON extra data',
+			created_at   DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY  (id),
+			KEY          idx_run_id       (run_id),
+			KEY          idx_workflow_id  (workflow_id),
+			KEY          idx_level        (level),
+			KEY          idx_created_at   (created_at)
 		) ENGINE=InnoDB {$charset_collate};";
 
 		foreach ( $sql as $statement ) {

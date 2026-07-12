@@ -19,6 +19,7 @@ use TSH\WhatsAppNotify\Admin\Pages\Queue;
 use TSH\WhatsAppNotify\Admin\Pages\Logs;
 use TSH\WhatsAppNotify\Admin\Pages\Tools;
 use TSH\WhatsAppNotify\Admin\Pages\About;
+use TSH\WhatsAppNotify\Admin\Pages\Automation;
 use TSH\WhatsAppNotify\Admin\Pages\Inbox;
 
 /**
@@ -52,7 +53,8 @@ final class Menu {
 	public const SLUG_SETTINGS   = 'tsh-whatsapp-notify-settings';
 	public const SLUG_TOOLS      = 'tsh-whatsapp-notify-tools';
 	public const SLUG_ABOUT      = 'tsh-whatsapp-notify-about';
-	public const SLUG_INBOX      = 'tsh-whatsapp-notify-inbox';
+	public const SLUG_INBOX       = 'tsh-whatsapp-notify-inbox';
+	public const SLUG_AUTOMATION  = 'tsh-whatsapp-notify-automation';
 
 	/** @var Dashboard */
 	private Dashboard $dashboard;
@@ -81,6 +83,9 @@ final class Menu {
 	/** @var Inbox */
 	private Inbox $inbox;
 
+	/** @var Automation */
+	private Automation $automation;
+
 	/**
 	 * Constructor — registers menu hooks.
 	 */
@@ -93,7 +98,8 @@ final class Menu {
 		$this->logs      = new Logs();
 		$this->tools     = new Tools();
 		$this->about     = new About();
-		$this->inbox     = new Inbox();
+		$this->inbox       = new Inbox();
+		$this->automation  = new Automation();
 
 		add_action( 'admin_menu', [ $this, 'register_menus' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
@@ -205,6 +211,16 @@ final class Menu {
 			'manage_woocommerce',
 			self::SLUG_INBOX,
 			[ $this->inbox, 'render' ]
+		);
+
+		// Automation (Phase 7).
+		add_submenu_page(
+			self::SLUG_DASHBOARD,
+			__( 'Automation — TSH WhatsApp Notify', 'tsh-whatsapp-notify' ),
+			__( 'Automation', 'tsh-whatsapp-notify' ),
+			'manage_woocommerce',
+			self::SLUG_AUTOMATION,
+			[ $this->automation, 'render' ]
 		);
 	}
 
