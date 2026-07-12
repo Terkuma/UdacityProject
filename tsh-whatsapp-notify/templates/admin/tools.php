@@ -109,6 +109,68 @@ if ( ! defined( 'ABSPATH' ) ) {
 		</div>
 	</div>
 
+	<?php /* ── WooCommerce tools ─────────────────────────────────────────── */ ?>
+	<div class="tsh-wa-panel">
+		<div class="tsh-wa-panel__header">
+			<h2><?php esc_html_e( 'WooCommerce Integration', 'tsh-whatsapp-notify' ); ?></h2>
+		</div>
+		<div class="tsh-wa-panel__body">
+			<table class="tsh-wa-tools-table">
+				<tbody>
+					<tr>
+						<td>
+							<strong><?php esc_html_e( 'Clear Order Notification Log', 'tsh-whatsapp-notify' ); ?></strong>
+							<p class="description">
+								<?php esc_html_e( 'Delete all records from the order notifications log table (tsh_wa_notifications). Queue items are not affected. Cannot be undone.', 'tsh-whatsapp-notify' ); ?>
+							</p>
+						</td>
+						<td>
+							<form method="post">
+								<?php wp_nonce_field( 'tsh_wa_tools_action', 'tsh_wa_tools_nonce' ); ?>
+								<button type="submit" name="tsh_wa_tool" value="clear_notifications" class="button"
+									data-tsh-wa-confirm="<?php esc_attr_e( 'Delete all order notification records? This cannot be undone.', 'tsh-whatsapp-notify' ); ?>">
+									<?php esc_html_e( 'Clear Notification Log', 'tsh-whatsapp-notify' ); ?>
+								</button>
+							</form>
+						</td>
+					</tr>
+					<tr>
+						<td>
+							<strong><?php esc_html_e( 'Retry Failed Order Notifications', 'tsh-whatsapp-notify' ); ?></strong>
+							<p class="description">
+								<?php esc_html_e( 'Requeue all failed order notification queue items for another delivery attempt.', 'tsh-whatsapp-notify' ); ?>
+							</p>
+						</td>
+						<td>
+							<form method="post">
+								<?php wp_nonce_field( 'tsh_wa_tools_action', 'tsh_wa_tools_nonce' ); ?>
+								<button type="submit" name="tsh_wa_tool" value="retry_failed_queue" class="button button-primary">
+									<?php esc_html_e( 'Retry Failed', 'tsh-whatsapp-notify' ); ?>
+								</button>
+							</form>
+						</td>
+					</tr>
+					<tr>
+						<td>
+							<strong><?php esc_html_e( 'Verify WooCommerce Hooks', 'tsh-whatsapp-notify' ); ?></strong>
+							<p class="description">
+								<?php esc_html_e( 'Confirms that all WooCommerce order lifecycle hooks are correctly registered by this plugin.', 'tsh-whatsapp-notify' ); ?>
+							</p>
+						</td>
+						<td>
+							<form method="post">
+								<?php wp_nonce_field( 'tsh_wa_tools_action', 'tsh_wa_tools_nonce' ); ?>
+								<button type="submit" name="tsh_wa_tool" value="verify_wc_hooks" class="button">
+									<?php esc_html_e( 'Verify Hooks', 'tsh-whatsapp-notify' ); ?>
+								</button>
+							</form>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+
 	<?php /* ── Database tools ────────────────────────────────────────────── */ ?>
 	<div class="tsh-wa-panel">
 		<div class="tsh-wa-panel__header">

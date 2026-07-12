@@ -929,3 +929,508 @@
 	justify-content: space-between;
 }
 
+/* ============================================================
+   Phase 3 — Section heading (dashboard WC stats)
+   ============================================================ */
+
+.tsh-wa-section-heading {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin: 28px 0 10px;
+}
+
+.tsh-wa-section-heading h2 {
+	margin: 0;
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.tsh-wa-section-heading__link {
+	font-size: 13px;
+	color: var(--tsh-wa-blue);
+	text-decoration: none;
+}
+
+.tsh-wa-section-heading__link:hover {
+	text-decoration: underline;
+}
+
+.tsh-wa-text-muted {
+	color: var(--tsh-wa-text-muted);
+}
+
+/* ============================================================
+   Phase 3 — Orders page
+   ============================================================ */
+
+/* Status summary strip */
+.tsh-wa-orders-summary {
+	display: flex;
+	gap: 0;
+	margin: 16px 0;
+	background: var(--tsh-wa-white);
+	border: 1px solid var(--tsh-wa-border);
+	border-radius: var(--tsh-wa-radius-lg);
+	overflow: hidden;
+	box-shadow: var(--tsh-wa-shadow);
+}
+
+.tsh-wa-orders-summary__item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 18px;
+	text-decoration: none;
+	color: var(--tsh-wa-text);
+	font-size: 13px;
+	border-right: 1px solid var(--tsh-wa-border);
+	transition: background .1s;
+}
+
+.tsh-wa-orders-summary__item:last-child {
+	border-right: none;
+}
+
+.tsh-wa-orders-summary__item:hover {
+	background: var(--tsh-wa-grey-light);
+}
+
+.tsh-wa-orders-summary__item--active {
+	background: var(--tsh-wa-grey-light);
+	font-weight: 600;
+}
+
+.tsh-wa-orders-summary__label {
+	white-space: nowrap;
+}
+
+.tsh-wa-orders-summary__count {
+	background: var(--tsh-wa-grey-light);
+	border: 1px solid var(--tsh-wa-border);
+	border-radius: 20px;
+	padding: 1px 8px;
+	font-size: 11px;
+	font-weight: 700;
+	color: var(--tsh-wa-text-muted);
+}
+
+.tsh-wa-orders-summary__item--active .tsh-wa-orders-summary__count {
+	background: var(--tsh-wa-blue);
+	border-color: var(--tsh-wa-blue);
+	color: #fff;
+}
+
+/* Filters bar */
+.tsh-wa-orders-filters {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.tsh-wa-orders-search {
+	flex: 1 1 260px;
+	min-width: 160px;
+}
+
+/* Table wrapper (horizontal scroll on small screens) */
+.tsh-wa-orders-table-wrapper {
+	overflow-x: auto;
+}
+
+.tsh-wa-orders-table {
+	border-collapse: collapse;
+	width: 100%;
+}
+
+.tsh-wa-orders-table th,
+.tsh-wa-orders-table td {
+	padding: 10px 14px;
+	vertical-align: top;
+	border-bottom: 1px solid var(--tsh-wa-border);
+	font-size: 13px;
+}
+
+.tsh-wa-orders-table thead th {
+	background: var(--tsh-wa-grey-light);
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.tsh-wa-orders-table tbody tr:last-child td {
+	border-bottom: none;
+}
+
+.tsh-wa-orders-table tbody tr:hover td {
+	background: #fafafa;
+}
+
+.tsh-wa-orders-table__order-link {
+	font-weight: 600;
+	text-decoration: none;
+	color: var(--tsh-wa-blue);
+	white-space: nowrap;
+}
+
+.tsh-wa-orders-table__order-link:hover {
+	text-decoration: underline;
+}
+
+.tsh-wa-orders-table__phone {
+	font-size: 12px;
+	color: var(--tsh-wa-text-muted);
+}
+
+.tsh-wa-orders-table__error {
+	font-size: 11px;
+	color: var(--tsh-wa-red);
+	margin-top: 4px;
+	max-width: 220px;
+	word-break: break-word;
+}
+
+/* Pagination */
+.tsh-wa-orders-pagination {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	justify-content: center;
+	padding: 14px 20px;
+	border-top: 1px solid var(--tsh-wa-border);
+}
+
+/* ============================================================
+   Phase 3 — Order Meta Box
+   ============================================================ */
+
+.tsh-wa-metabox {
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+/* Recipient status pills */
+.tsh-wa-metabox__recipients {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin-bottom: 12px;
+}
+
+.tsh-wa-metabox__recipient-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px 10px;
+	border-radius: 20px;
+	font-size: 12px;
+	font-weight: 500;
+	background: var(--tsh-wa-grey-light);
+	border: 1px solid var(--tsh-wa-border);
+}
+
+.tsh-wa-metabox__recipient-pill .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+}
+
+.tsh-wa-metabox__recipient-pill--ok {
+	background: var(--tsh-wa-green-light);
+	border-color: var(--tsh-wa-green);
+	color: #065f46;
+}
+
+.tsh-wa-metabox__recipient-pill--ok .dashicons {
+	color: var(--tsh-wa-green-dark);
+}
+
+.tsh-wa-metabox__recipient-pill--warn {
+	background: var(--tsh-wa-orange-light);
+	border-color: var(--tsh-wa-orange);
+	color: #92400e;
+}
+
+.tsh-wa-metabox__recipient-pill--warn .dashicons {
+	color: var(--tsh-wa-orange);
+}
+
+/* Event selector row */
+.tsh-wa-metabox__event-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 12px;
+	flex-wrap: wrap;
+}
+
+.tsh-wa-metabox__event-label {
+	font-size: 12px;
+	color: var(--tsh-wa-text-muted);
+	white-space: nowrap;
+}
+
+.tsh-wa-metabox__event-select {
+	flex: 1 1 auto;
+	min-width: 140px;
+}
+
+.tsh-wa-metabox__spinner {
+	float: none !important;
+	visibility: hidden;
+	margin: 0 !important;
+}
+
+/* Preview accordions */
+.tsh-wa-mb-preview {
+	border: 1px solid var(--tsh-wa-border);
+	border-radius: var(--tsh-wa-radius);
+	margin-bottom: 8px;
+	overflow: hidden;
+}
+
+.tsh-wa-mb-preview__summary {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 10px;
+	cursor: pointer;
+	background: var(--tsh-wa-grey-light);
+	font-size: 12px;
+	font-weight: 600;
+	list-style: none;
+	user-select: none;
+}
+
+.tsh-wa-mb-preview__summary::-webkit-details-marker {
+	display: none;
+}
+
+.tsh-wa-mb-preview__summary::before {
+	content: '▶';
+	font-size: 10px;
+	transition: transform .15s;
+}
+
+details[open] > .tsh-wa-mb-preview__summary::before {
+	transform: rotate(90deg);
+}
+
+.tsh-wa-mb-preview__summary .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+	color: var(--tsh-wa-green-dark);
+}
+
+.tsh-wa-mb-preview__disabled {
+	font-size: 11px;
+	color: var(--tsh-wa-text-muted);
+	font-weight: 400;
+	margin-left: auto;
+}
+
+.tsh-wa-mb-preview__body {
+	padding: 10px;
+}
+
+.tsh-wa-mb-message {
+	margin: 0 0 8px;
+	padding: 10px;
+	background: #f9f9f9;
+	border: 1px solid var(--tsh-wa-border);
+	border-radius: 4px;
+	font-family: inherit;
+	font-size: 12px;
+	line-height: 1.55;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.tsh-wa-mb-preview__footer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.tsh-wa-mb-char-count {
+	font-size: 11px;
+	color: var(--tsh-wa-text-muted);
+}
+
+/* Action buttons */
+.tsh-wa-mb-actions {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	margin: 10px 0 8px;
+}
+
+.tsh-wa-mb-actions .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+	vertical-align: middle;
+	margin-top: -2px;
+}
+
+/* Result notice */
+.tsh-wa-mb-result {
+	margin: 6px 0;
+	padding: 8px 12px;
+	border-radius: var(--tsh-wa-radius);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+/* History */
+.tsh-wa-mb-history {
+	margin-top: 14px;
+	border-top: 1px solid var(--tsh-wa-border);
+	padding-top: 10px;
+}
+
+.tsh-wa-mb-history__heading {
+	margin: 0 0 8px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: .5px;
+	color: var(--tsh-wa-text-muted);
+}
+
+.tsh-wa-mb-history__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tsh-wa-mb-history__item {
+	display: grid;
+	grid-template-columns: 18px 1fr auto;
+	gap: 4px 6px;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--tsh-wa-border);
+	font-size: 12px;
+	align-items: start;
+}
+
+.tsh-wa-mb-history__item:last-child {
+	border-bottom: none;
+}
+
+.tsh-wa-mb-history__icon .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+	margin-top: 1px;
+}
+
+.tsh-wa-mb-history__item--sent   .tsh-wa-mb-history__icon .dashicons { color: var(--tsh-wa-green-dark); }
+.tsh-wa-mb-history__item--queued .tsh-wa-mb-history__icon .dashicons { color: var(--tsh-wa-orange); }
+.tsh-wa-mb-history__item--failed .tsh-wa-mb-history__icon .dashicons { color: var(--tsh-wa-red); }
+
+.tsh-wa-mb-history__detail {
+	color: var(--tsh-wa-text);
+}
+
+.tsh-wa-mb-history__name {
+	color: var(--tsh-wa-text-muted);
+}
+
+.tsh-wa-mb-history__event {
+	color: var(--tsh-wa-text-muted);
+	font-style: italic;
+}
+
+.tsh-wa-mb-history__time {
+	color: var(--tsh-wa-text-muted);
+	white-space: nowrap;
+	font-size: 11px;
+}
+
+.tsh-wa-mb-history__error {
+	grid-column: 2 / -1;
+	color: var(--tsh-wa-red);
+	font-size: 11px;
+	word-break: break-word;
+}
+
+.tsh-wa-mb-empty {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 10px 0 0;
+	color: var(--tsh-wa-text-muted);
+	font-size: 12px;
+}
+
+.tsh-wa-mb-empty .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+}
+
+/* ============================================================
+   Phase 3 — Admin Recipients (Settings page)
+   ============================================================ */
+
+.tsh-wa-recipients-add-row {
+	display: flex;
+	gap: 8px;
+	align-items: flex-end;
+	flex-wrap: wrap;
+	margin-bottom: 16px;
+}
+
+.tsh-wa-recipients-add-row label {
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.tsh-wa-recipients-add-row input[type="text"] {
+	min-width: 180px;
+}
+
+.tsh-wa-recipients-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tsh-wa-recipients-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--tsh-wa-border);
+	font-size: 13px;
+}
+
+.tsh-wa-recipients-item:last-child {
+	border-bottom: none;
+}
+
+.tsh-wa-recipients-item__phone code {
+	font-size: 13px;
+}
+
+.tsh-wa-recipients-item__name {
+	color: var(--tsh-wa-text-muted);
+}
+
+.tsh-wa-recipient-delete {
+	margin-left: auto !important;
+	color: var(--tsh-wa-red) !important;
+	border-color: var(--tsh-wa-red) !important;
+}
+
+.tsh-wa-recipients-empty {
+	padding: 12px;
+	color: var(--tsh-wa-text-muted);
+	font-size: 13px;
+	font-style: italic;
+}
+

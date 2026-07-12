@@ -590,6 +590,44 @@ final class Ajax {
 	}
 
 	// -------------------------------------------------------------------------
+	// Phase 3 — template resolution helper
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Resolve a template slug to its body for preview purposes.
+	 * Falls back to a built-in default if the slug is empty or not found.
+	 *
+	 * @param string $slug      Template slug.
+	 * @param string $event_key Plugin event key.
+	 * @param string $type      'customer' | 'admin'.
+	 * @return string
+	 */
+	private function resolve_preview_template( string $slug, string $event_key, string $type ): string {
+		if ( $slug ) {
+			global $wpdb;
+			$table = $wpdb->prefix . 'tsh_wa_templates';
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$body = $wpdb->get_var(
+				$wpdb->prepare( "SELECT message_body FROM `{$table}` WHERE slug = %s AND status = 'active' LIMIT 1", $slug )
+			);
+			if ( $body ) {
+				return (string) $body;
+			}
+		}
+
+		$event_label = \TSH\WhatsAppNotify\Orders\OrderStatusListener::event_label( $event_key );
+
+		if ( 'admin' === $type ) {
+			return sprintf(
+				"🛒 *New Order Notification*\n\n*Event:* %s\n*Order:* #{order_number}\n*Customer:* {customer_name}\n*Phone:* {customer_phone}\n*Total:* {total}\n*Payment:* {payment_method}\n\n*Products:*\n{products}\n\n🔗 {admin_order_url}",
+				$event_label
+			);
+		}
+
+		return "Hello {customer_name}! 👋\n\nThank you for your order at *{store_name}*.\n\n*Order #{order_number}* — {$event_label}\n\n*Items:*\n{products}\n\n*Total:* {total}\n*Payment:* {payment_method}\n\nTrack your order: {customer_order_url}";
+	}
+
+	// -------------------------------------------------------------------------
 	// Security helper
 	// -------------------------------------------------------------------------
 

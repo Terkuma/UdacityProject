@@ -53,6 +53,10 @@
 			this.initDiagnostics();
 			this.initApiSettingsActions();
 			this.initHealthRefresh();
+
+			// Phase 3 — WooCommerce order integration.
+			this.initOrderMetaBox();
+			this.initAdminRecipients();
 		},
 
 		// -----------------------------------------------------------------------
@@ -584,6 +588,243 @@
 						$btn.prop( 'disabled', false );
 					}
 				);
+			} );
+		},
+
+		// -----------------------------------------------------------------------
+		// PHASE 3 — Order Meta Box
+		// -----------------------------------------------------------------------
+
+		/**
+		 * Initialise the WhatsApp meta box on WooCommerce order edit screens.
+		 *
+		 * Handles:
+		 *  - Event selector → reload preview via AJAX
+		 *  - Queue → Customer / Admin(s) buttons
+		 *  - Resend All button
+		 *  - Copy-to-clipboard for message previews
+		 */
+		initOrderMetaBox: function () {
+			var $box = $( '#tsh-wa-metabox' );
+			if ( ! $box.length ) { return; }
+
+			var orderId = $box.data( 'order-id' );
+			var nonce   = $box.data( 'nonce' );
+
+			// ── Event selector: refresh preview ──────────────────────────────
+			$box.on( 'change', '.tsh-wa-metabox__event-select', function () {
+				var event  = $( this ).val();
+				var $spin  = $box.find( '.tsh-wa-metabox__spinner' );
+				var $cust  = $( '#tsh-wa-mb-customer-msg' );
+				var $adm   = $( '#tsh-wa-mb-admin-msg' );
+
+				$spin.css( 'visibility', 'visible' );
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_get_order_preview',
+					{ order_id: orderId, event_key: event, _ajax_nonce: nonce },
+					function ( response ) {
+						$spin.css( 'visibility', 'hidden' );
+						if ( ! response.success ) { return; }
+						var d = response.data;
+						$cust.text( d.customer_message || '' );
+						$adm.text( d.admin_message || '' );
+						// Update char counts.
+						$cust.closest( '.tsh-wa-mb-preview__body' )
+							.find( '.tsh-wa-mb-char-count' )
+							.text( ( d.customer_message || '' ).length + ' chars' );
+						$adm.closest( '.tsh-wa-mb-preview__body' )
+							.find( '.tsh-wa-mb-char-count' )
+							.text( ( d.admin_message || '' ).length + ' chars' );
+					},
+					function () {
+						$spin.css( 'visibility', 'hidden' );
+					}
+				);
+			} );
+
+			// ── Queue buttons ─────────────────────────────────────────────────
+			$box.on( 'click', '.tsh-wa-mb-queue-btn', function () {
+				var $btn      = $( this );
+				var recipient = $btn.data( 'recipient' );
+				var event     = $box.find( '.tsh-wa-metabox__event-select' ).val();
+				var $result   = $( '#tsh-wa-mb-result' );
+
+				$btn.prop( 'disabled', true );
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_queue_order_notification',
+					{ order_id: orderId, event_key: event, recipient_type: recipient, _ajax_nonce: nonce },
+					function ( response ) {
+						$btn.prop( 'disabled', false );
+						var ok  = !! ( response && response.success );
+						var msg = ok
+							? ( ( response.data && response.data.message ) || 'Queued.' )
+							: ( ( response.data && response.data.message ) || ( tshWaAdmin.i18n.error || 'Failed.' ) );
+						TSHWaAdmin.showAjaxResult( $result, ok, msg );
+					},
+					function () {
+						$btn.prop( 'disabled', false );
+						TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.error || 'Request failed.' );
+					}
+				);
+			} );
+
+			// ── Resend All button ─────────────────────────────────────────────
+			$box.on( 'click', '.tsh-wa-mb-resend-btn', function () {
+				var $btn    = $( this );
+				var event   = $box.find( '.tsh-wa-metabox__event-select' ).val();
+				var $result = $( '#tsh-wa-mb-result' );
+
+				$btn.prop( 'disabled', true );
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_resend_order_notification',
+					{ order_id: orderId, event_key: event, _ajax_nonce: nonce },
+					function ( response ) {
+						$btn.prop( 'disabled', false );
+						var ok  = !! ( response && response.success );
+						var msg = ok
+							? ( ( response.data && response.data.message ) || 'Requeued.' )
+							: ( ( response.data && response.data.message ) || ( tshWaAdmin.i18n.error || 'Failed.' ) );
+						TSHWaAdmin.showAjaxResult( $result, ok, msg );
+					},
+					function () {
+						$btn.prop( 'disabled', false );
+						TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.error || 'Request failed.' );
+					}
+				);
+			} );
+
+			// ── Copy message to clipboard ─────────────────────────────────────
+			$box.on( 'click', '.tsh-wa-mb-copy', function () {
+				var target = $( this ).data( 'target' );
+				var $pre   = $( '#' + target );
+				if ( ! $pre.length ) { return; }
+
+				var text = $pre.text();
+				var $btn = $( this );
+
+				if ( navigator.clipboard && window.isSecureContext ) {
+					navigator.clipboard.writeText( text ).then( function () {
+						TSHWaAdmin.showCopySuccess( $btn );
+					} );
+				} else {
+					var $tmp = $( '<textarea style="position:absolute;left:-9999px;">' + text + '</textarea>' );
+					$( 'body' ).append( $tmp );
+					$tmp.select();
+					document.execCommand( 'copy' );
+					$tmp.remove();
+					TSHWaAdmin.showCopySuccess( $btn );
+				}
+			} );
+		},
+
+		// -----------------------------------------------------------------------
+		// PHASE 3 — Admin Recipients Management
+		// -----------------------------------------------------------------------
+
+		/**
+		 * Handles the dynamic admin phone number list on the Settings page
+		 * (admin_notifications tab). Adds / removes recipients via AJAX.
+		 */
+		initAdminRecipients: function () {
+			var $container = $( '#tsh-wa-admin-recipients' );
+			if ( ! $container.length ) { return; }
+
+			// ── Add new recipient ─────────────────────────────────────────────
+			$container.on( 'click', '#tsh-wa-btn-add-recipient', function () {
+				var $btn    = $( this );
+				var $phone  = $( '#tsh-wa-recipient-phone' );
+				var $name   = $( '#tsh-wa-recipient-name' );
+				var $result = $( '#tsh-wa-recipients-result' );
+				var phone   = $.trim( $phone.val() );
+				var name    = $.trim( $name.val() );
+
+				if ( ! phone ) {
+					TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.fill_required || 'Phone number is required.' );
+					return;
+				}
+
+				$btn.prop( 'disabled', true );
+
+				// Read all current recipients from the hidden field.
+				var existing = [];
+				try {
+					existing = JSON.parse( $( '#tsh-wa-recipients-json' ).val() || '[]' );
+				} catch ( e ) {}
+
+				existing.push( { id: Date.now(), phone: phone, name: name } );
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_save_admin_recipients',
+					{ recipients: JSON.stringify( existing ) },
+					function ( response ) {
+						$btn.prop( 'disabled', false );
+						if ( response.success ) {
+							$phone.val( '' );
+							$name.val( '' );
+							$( '#tsh-wa-recipients-json' ).val( JSON.stringify( response.data.recipients || existing ) );
+							TSHWaAdmin.renderRecipients( $container, response.data.recipients || existing );
+							TSHWaAdmin.showAjaxResult( $result, true, response.data.message || 'Saved.' );
+						} else {
+							TSHWaAdmin.showAjaxResult( $result, false, ( response.data && response.data.message ) || tshWaAdmin.i18n.error );
+						}
+					},
+					function () {
+						$btn.prop( 'disabled', false );
+						TSHWaAdmin.showAjaxResult( $result, false, tshWaAdmin.i18n.error || 'Request failed.' );
+					}
+				);
+			} );
+
+			// ── Delete recipient ──────────────────────────────────────────────
+			$container.on( 'click', '.tsh-wa-recipient-delete', function () {
+				var id      = $( this ).data( 'id' );
+				var $result = $( '#tsh-wa-recipients-result' );
+
+				TSHWaAdmin.ajax(
+					'tsh_wa_delete_admin_recipient',
+					{ recipient_id: id },
+					function ( response ) {
+						if ( response.success ) {
+							$( '#tsh-wa-recipients-json' ).val( JSON.stringify( response.data.recipients || [] ) );
+							TSHWaAdmin.renderRecipients( $container, response.data.recipients || [] );
+							TSHWaAdmin.showAjaxResult( $result, true, response.data.message || 'Deleted.' );
+						} else {
+							TSHWaAdmin.showAjaxResult( $result, false, ( response.data && response.data.message ) || tshWaAdmin.i18n.error );
+						}
+					}
+				);
+			} );
+		},
+
+		/**
+		 * Re-render the recipients list.
+		 *
+		 * @param {jQuery} $container
+		 * @param {Array}  recipients
+		 */
+		renderRecipients: function ( $container, recipients ) {
+			var $list = $container.find( '#tsh-wa-recipients-list' );
+			$list.empty();
+
+			if ( ! recipients || ! recipients.length ) {
+				$list.html( '<li class="tsh-wa-recipients-empty">' + TSHWaAdmin.esc( 'No admin recipients configured.' ) + '</li>' );
+				return;
+			}
+
+			$.each( recipients, function ( i, r ) {
+				var $li = $(
+					'<li class="tsh-wa-recipients-item">' +
+					'<span class="tsh-wa-recipients-item__phone"><code>' + TSHWaAdmin.esc( r.phone || '' ) + '</code></span>' +
+					( r.name ? '<span class="tsh-wa-recipients-item__name">' + TSHWaAdmin.esc( r.name ) + '</span>' : '' ) +
+					'<button type="button" class="button button-small tsh-wa-recipient-delete" data-id="' + TSHWaAdmin.esc( r.id ) + '">' +
+					'<span class="dashicons dashicons-trash" aria-hidden="true"></span> Remove' +
+					'</button>' +
+					'</li>'
+				);
+				$list.append( $li );
 			} );
 		},
 

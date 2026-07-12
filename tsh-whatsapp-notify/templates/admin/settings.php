@@ -76,6 +76,99 @@ $option_key = Settings::get_option_key( $active_tab );
 		?>
 	</form>
 
+	<?php /* ── Admin Recipients (admin_notifications tab only) ──────────── */ ?>
+	<?php if ( 'admin_notifications' === $active_tab ) : ?>
+
+	<?php
+	$admin_recipients = get_option( 'tsh_wa_admin_recipients', [] );
+	if ( ! is_array( $admin_recipients ) ) {
+		$admin_recipients = [];
+	}
+	?>
+	<div class="tsh-wa-panel" style="margin-top:24px;" id="tsh-wa-admin-recipients">
+		<div class="tsh-wa-panel__header">
+			<h2><?php esc_html_e( 'Admin Notification Numbers', 'tsh-whatsapp-notify' ); ?></h2>
+			<span class="tsh-wa-panel__badge">
+				<?php
+				printf(
+					/* translators: %d: number of admin recipients */
+					esc_html( _n( '%d recipient', '%d recipients', count( $admin_recipients ), 'tsh-whatsapp-notify' ) ),
+					count( $admin_recipients )
+				);
+				?>
+			</span>
+		</div>
+		<div class="tsh-wa-panel__body">
+
+			<p class="description" style="margin-top:0;">
+				<?php esc_html_e( 'These phone numbers receive admin-facing WhatsApp notifications for the events enabled above. Numbers must be in E.164 format (e.g. +2348012345678).', 'tsh-whatsapp-notify' ); ?>
+			</p>
+
+			<?php /* Current recipients list */ ?>
+			<input type="hidden" id="tsh-wa-recipients-json" value="<?php echo esc_attr( wp_json_encode( array_values( $admin_recipients ) ) ); ?>">
+
+			<ul class="tsh-wa-recipients-list" id="tsh-wa-recipients-list" style="margin-bottom:16px;border:1px solid var(--tsh-wa-border);border-radius:var(--tsh-wa-radius);overflow:hidden;">
+				<?php if ( empty( $admin_recipients ) ) : ?>
+					<li class="tsh-wa-recipients-empty" style="padding:12px 16px;">
+						<?php esc_html_e( 'No admin recipients configured yet.', 'tsh-whatsapp-notify' ); ?>
+					</li>
+				<?php else : ?>
+					<?php foreach ( $admin_recipients as $r ) : ?>
+					<li class="tsh-wa-recipients-item">
+						<span class="tsh-wa-recipients-item__phone">
+							<code><?php echo esc_html( $r['phone'] ?? '' ); ?></code>
+						</span>
+						<?php if ( ! empty( $r['name'] ) ) : ?>
+							<span class="tsh-wa-recipients-item__name"><?php echo esc_html( $r['name'] ); ?></span>
+						<?php endif; ?>
+						<button type="button"
+							class="button button-small tsh-wa-recipient-delete"
+							data-id="<?php echo esc_attr( $r['id'] ?? '' ); ?>"
+							style="margin-left:auto;"
+						>
+							<span class="dashicons dashicons-trash" aria-hidden="true" style="vertical-align:middle;margin-top:-2px;font-size:14px;width:14px;height:14px;"></span>
+							<?php esc_html_e( 'Remove', 'tsh-whatsapp-notify' ); ?>
+						</button>
+					</li>
+					<?php endforeach; ?>
+				<?php endif; ?>
+			</ul>
+
+			<?php /* Add new recipient form */ ?>
+			<div class="tsh-wa-recipients-add-row">
+				<div>
+					<label for="tsh-wa-recipient-phone"><?php esc_html_e( 'Phone Number', 'tsh-whatsapp-notify' ); ?></label><br>
+					<input type="text"
+						id="tsh-wa-recipient-phone"
+						class="regular-text"
+						placeholder="+2348012345678"
+						style="margin-top:4px;"
+					>
+				</div>
+				<div>
+					<label for="tsh-wa-recipient-name"><?php esc_html_e( 'Label (optional)', 'tsh-whatsapp-notify' ); ?></label><br>
+					<input type="text"
+						id="tsh-wa-recipient-name"
+						class="regular-text"
+						placeholder="<?php esc_attr_e( 'e.g. Store Manager', 'tsh-whatsapp-notify' ); ?>"
+						style="margin-top:4px;"
+					>
+				</div>
+				<div style="padding-top:22px;">
+					<button type="button" id="tsh-wa-btn-add-recipient" class="button button-primary">
+						<span class="dashicons dashicons-plus-alt2" aria-hidden="true" style="vertical-align:middle;margin-top:-2px;"></span>
+						<?php esc_html_e( 'Add Recipient', 'tsh-whatsapp-notify' ); ?>
+					</button>
+				</div>
+			</div>
+
+			<div id="tsh-wa-recipients-result" class="tsh-wa-ajax-result" style="display:none;"></div>
+
+		</div>
+	</div>
+
+	<?php endif; ?>
+
 	<?php /* ── Connection Tester (API tab only) ──────────────────────── */ ?>
 	<?php if ( 'api' === $active_tab ) : ?>
 

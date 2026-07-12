@@ -190,6 +190,154 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 	</div><!-- .tsh-wa-cards -->
 
+	<?php /* ── WooCommerce notification stats ───────────────────────────── */ ?>
+	<?php if ( isset( $wc_orders_today ) ) : ?>
+	<div class="tsh-wa-section-heading">
+		<h2><?php esc_html_e( 'WooCommerce Notifications Today', 'tsh-whatsapp-notify' ); ?></h2>
+		<a href="<?php echo esc_url( $url_orders ); ?>" class="tsh-wa-section-heading__link">
+			<?php esc_html_e( 'View log →', 'tsh-whatsapp-notify' ); ?>
+		</a>
+	</div>
+
+	<div class="tsh-wa-cards tsh-wa-wc-cards">
+
+		<div class="tsh-wa-card">
+			<div class="tsh-wa-card__icon tsh-wa-card__icon--blue">
+				<span class="dashicons dashicons-cart"></span>
+			</div>
+			<div class="tsh-wa-card__body">
+				<h3 class="tsh-wa-card__title"><?php esc_html_e( 'Orders Today', 'tsh-whatsapp-notify' ); ?></h3>
+				<p class="tsh-wa-card__value"><?php echo esc_html( number_format_i18n( $wc_orders_today ) ); ?></p>
+				<p class="tsh-wa-card__meta">
+					<a href="<?php echo esc_url( admin_url( 'admin.php?page=wc-orders' ) ); ?>">
+						<?php esc_html_e( 'WooCommerce orders →', 'tsh-whatsapp-notify' ); ?>
+					</a>
+				</p>
+			</div>
+		</div>
+
+		<div class="tsh-wa-card">
+			<div class="tsh-wa-card__icon tsh-wa-card__icon--green">
+				<span class="dashicons dashicons-yes-alt"></span>
+			</div>
+			<div class="tsh-wa-card__body">
+				<h3 class="tsh-wa-card__title"><?php esc_html_e( 'Notifications Sent', 'tsh-whatsapp-notify' ); ?></h3>
+				<p class="tsh-wa-card__value"><?php echo esc_html( number_format_i18n( $wc_notifications_sent ) ); ?></p>
+				<p class="tsh-wa-card__meta">
+					<a href="<?php echo esc_url( add_query_arg( 'filter_status', 'sent', $url_orders ) ); ?>">
+						<?php esc_html_e( 'View sent →', 'tsh-whatsapp-notify' ); ?>
+					</a>
+				</p>
+			</div>
+		</div>
+
+		<div class="tsh-wa-card">
+			<div class="tsh-wa-card__icon tsh-wa-card__icon--orange">
+				<span class="dashicons dashicons-clock"></span>
+			</div>
+			<div class="tsh-wa-card__body">
+				<h3 class="tsh-wa-card__title"><?php esc_html_e( 'Notifications Waiting', 'tsh-whatsapp-notify' ); ?></h3>
+				<p class="tsh-wa-card__value"><?php echo esc_html( number_format_i18n( $wc_notifications_waiting ) ); ?></p>
+				<p class="tsh-wa-card__meta">
+					<a href="<?php echo esc_url( add_query_arg( 'filter_status', 'queued', $url_orders ) ); ?>">
+						<?php esc_html_e( 'View queued →', 'tsh-whatsapp-notify' ); ?>
+					</a>
+				</p>
+			</div>
+		</div>
+
+		<div class="tsh-wa-card">
+			<div class="tsh-wa-card__icon <?php echo $wc_notifications_failed > 0 ? 'tsh-wa-card__icon--red' : 'tsh-wa-card__icon--grey'; ?>">
+				<span class="dashicons dashicons-dismiss"></span>
+			</div>
+			<div class="tsh-wa-card__body">
+				<h3 class="tsh-wa-card__title"><?php esc_html_e( 'Notifications Failed', 'tsh-whatsapp-notify' ); ?></h3>
+				<p class="tsh-wa-card__value"><?php echo esc_html( number_format_i18n( $wc_notifications_failed ) ); ?></p>
+				<p class="tsh-wa-card__meta">
+					<?php if ( $wc_notifications_failed > 0 ) : ?>
+						<a href="<?php echo esc_url( add_query_arg( 'filter_status', 'failed', $url_orders ) ); ?>">
+							<?php esc_html_e( 'View failed →', 'tsh-whatsapp-notify' ); ?>
+						</a>
+					<?php else : ?>
+						<?php esc_html_e( 'No failures', 'tsh-whatsapp-notify' ); ?>
+					<?php endif; ?>
+				</p>
+			</div>
+		</div>
+
+	</div><!-- .tsh-wa-wc-cards -->
+
+	<?php /* Recent WC notifications */ ?>
+	<?php if ( ! empty( $wc_recent_notifications ) ) : ?>
+	<div class="tsh-wa-panel" style="margin-bottom:20px;">
+		<div class="tsh-wa-panel__header">
+			<h2><?php esc_html_e( 'Recent Order Notifications', 'tsh-whatsapp-notify' ); ?></h2>
+			<a href="<?php echo esc_url( $url_orders ); ?>" class="tsh-wa-panel__link">
+				<?php esc_html_e( 'View all →', 'tsh-whatsapp-notify' ); ?>
+			</a>
+		</div>
+		<div class="tsh-wa-panel__body" style="padding:0;">
+			<table class="tsh-wa-table widefat">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Order', 'tsh-whatsapp-notify' ); ?></th>
+						<th><?php esc_html_e( 'Event', 'tsh-whatsapp-notify' ); ?></th>
+						<th><?php esc_html_e( 'Recipient', 'tsh-whatsapp-notify' ); ?></th>
+						<th><?php esc_html_e( 'Status', 'tsh-whatsapp-notify' ); ?></th>
+						<th><?php esc_html_e( 'Time', 'tsh-whatsapp-notify' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php foreach ( $wc_recent_notifications as $n ) : ?>
+					<?php
+					$status_colors = [
+						'sent'      => 'green',
+						'queued'    => 'orange',
+						'pending'   => 'orange',
+						'failed'    => 'red',
+						'cancelled' => 'grey',
+					];
+					$color = $status_colors[ $n->status ] ?? 'grey';
+					?>
+					<tr>
+						<td>
+							<?php
+							$order_edit = admin_url( 'post.php?post=' . absint( $n->order_id ) . '&action=edit' );
+							if ( function_exists( 'wc_get_order' ) ) {
+								$o = wc_get_order( (int) $n->order_id );
+								if ( $o instanceof \WC_Order ) {
+									$order_edit = $o->get_edit_order_url();
+								}
+							}
+							?>
+							<a href="<?php echo esc_url( $order_edit ); ?>">#<?php echo esc_html( $n->order_id ); ?></a>
+						</td>
+						<td><code><?php echo esc_html( $n->event ); ?></code></td>
+						<td>
+							<span class="tsh-wa-badge tsh-wa-badge--<?php echo 'admin' === $n->recipient_type ? 'purple' : 'blue'; ?>">
+								<?php echo esc_html( ucfirst( $n->recipient_type ) ); ?>
+							</span>
+						</td>
+						<td>
+							<span class="tsh-wa-badge tsh-wa-badge--<?php echo esc_attr( $color ); ?>">
+								<?php echo esc_html( ucfirst( $n->status ) ); ?>
+							</span>
+						</td>
+						<td>
+							<time datetime="<?php echo esc_attr( $n->created_at ); ?>">
+								<?php echo esc_html( human_time_diff( strtotime( $n->created_at ), current_time( 'timestamp' ) ) . ' ' . __( 'ago', 'tsh-whatsapp-notify' ) ); ?>
+							</time>
+						</td>
+					</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+		</div>
+	</div>
+	<?php endif; ?>
+
+	<?php endif; /* wc_orders_today isset */ ?>
+
 	<?php /* ── WhatsApp Cloud status card (replaces basic API card info) ─ */ ?>
 	<?php
 	$api_connected     = true === ( $api_health['success'] ?? null );

@@ -269,6 +269,24 @@ final class Menu {
 	 * @return bool
 	 */
 	private function is_plugin_page( string $hook_suffix ): bool {
-		return str_contains( $hook_suffix, 'tsh-whatsapp-notify' );
+		// Our own admin pages.
+		if ( str_contains( $hook_suffix, 'tsh-whatsapp-notify' ) ) {
+			return true;
+		}
+
+		// WooCommerce Classic order edit screen (post.php?post=<id>&action=edit, post-new.php).
+		if ( str_contains( $hook_suffix, 'post.php' ) || 'post-new.php' === $hook_suffix ) {
+			global $post_type;
+			if ( 'shop_order' === ( $post_type ?? '' ) ) {
+				return true;
+			}
+		}
+
+		// WooCommerce HPOS order edit screen.
+		if ( str_contains( $hook_suffix, 'wc-orders' ) ) {
+			return true;
+		}
+
+		return false;
 	}
 }
