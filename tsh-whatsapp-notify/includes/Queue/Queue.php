@@ -418,6 +418,200 @@ class Queue {
 		) ?: null;
 	}
 
+	// -------------------------------------------------------------------------
+	// Phase 4 — Delivery status + retry scheduling
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Update the delivery_status column (and optionally message_id + latency_ms).
+	 * Called by QueueProcessor at each step of the send lifecycle.
+	 *
+	 * @param int         $id              Queue item ID.
+	 * @param string      $delivery_status One of DeliveryTracker::STATUS_* constants.
+	 * @param string      $message_id      WhatsApp message ID (empty when not yet sent).
+	 * @param float|null  $latency_ms      API round-trip time, or null to leave unchanged.
+	 * @return bool
+	 */
+	public function update_delivery_status(
+		int $id,
+		string $delivery_status,
+		string $message_id = '',
+		?float $latency_ms = null
+	): bool {
+		global $wpdb;
+
+		$data    = [ 'delivery_status' => $delivery_status ];
+		$formats = [ '%s' ];
+
+		if ( $message_id !== '' ) {
+			$data['message_id'] = $message_id;
+			$formats[]          = '%s';
+		}
+
+		if ( null !== $latency_ms ) {
+			$data['latency_ms'] = $latency_ms;
+			$formats[]          = '%f';
+		}
+
+		$updated = $wpdb->update(
+			$wpdb->prefix . 'tsh_wa_queue',
+			$data,
+			[ 'id' => $id ],
+			$formats,
+			[ '%d' ]
+		);
+
+		return (bool) $updated;
+	}
+
+	/**
+	 * Schedule a retry for a failed item using exponential backoff.
+	 *
+	 * Sets status back to 'pending' with scheduled_at = $retry_after so the item
+	 * won't be picked up until that time.  Also stores retry_after for reference.
+	 *
+	 * @param int    $id          Queue item ID.
+	 * @param string $retry_after MySQL DATETIME string for the next attempt.
+	 * @param string $error       Error message from the failed attempt.
+	 * @return bool
+	 */
+	public function mark_retrying( int $id, string $retry_after, string $error = '' ): bool {
+		global $wpdb;
+
+		$updated = $wpdb->update(
+			$wpdb->prefix . 'tsh_wa_queue',
+			[
+				'status'          => self::STATUS_PENDING,
+				'delivery_status' => 'retrying',
+				'scheduled_at'    => $retry_after,
+				'retry_after'     => $retry_after,
+				'error_message'   => $error ? sanitize_textarea_field( $error ) : null,
+			],
+			[ 'id' => $id ],
+			[ '%s', '%s', '%s', '%s', '%s' ],
+			[ '%d' ]
+		);
+
+		return (bool) $updated;
+	}
+
+	/**
+	 * Stamp the worker_id on a queue item (called when locking for processing).
+	 *
+	 * @param int    $id        Queue item ID.
+	 * @param string $worker_id Worker identifier.
+	 * @return bool
+	 */
+	public function set_worker_id( int $id, string $worker_id ): bool {
+		global $wpdb;
+
+		$updated = $wpdb->update(
+			$wpdb->prefix . 'tsh_wa_queue',
+			[ 'worker_id' => $worker_id ],
+			[ 'id' => $id ],
+			[ '%s' ],
+			[ '%d' ]
+		);
+
+		return (bool) $updated;
+	}
+
+	/**
+	 * Return items that have been stuck in 'processing' state for more than $minutes.
+	 *
+	 * These are orphaned records from workers that crashed without releasing their lock.
+	 *
+	 * @param int $minutes
+	 * @return array<int, object>
+	 */
+	public function get_stuck_processing_items( int $minutes = 10 ): array {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'tsh_wa_queue';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM `{$table}`
+				 WHERE status = 'processing'
+				   AND updated_at < DATE_SUB(NOW(), INTERVAL %d MINUTE)",
+				$minutes
+			)
+		) ?: [];
+	}
+
+	/**
+	 * Reset stuck 'processing' items back to 'pending' so they can be retried.
+	 * Called at the start of every batch run as a safety measure.
+	 *
+	 * @param int $minutes Stale threshold in minutes.
+	 * @return int Number of rows reset.
+	 */
+	public function release_stuck_items( int $minutes = 10 ): int {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'tsh_wa_queue';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `{$table}`
+				 SET status = 'pending', delivery_status = 'queued'
+				 WHERE status = 'processing'
+				   AND updated_at < DATE_SUB(NOW(), INTERVAL %d MINUTE)",
+				$minutes
+			)
+		);
+	}
+
+	/**
+	 * Mark a queue item as expired.
+	 *
+	 * @param int $id
+	 * @return bool
+	 */
+	public function mark_expired( int $id ): bool {
+		global $wpdb;
+
+		$updated = $wpdb->update(
+			$wpdb->prefix . 'tsh_wa_queue',
+			[
+				'status'          => self::STATUS_CANCELLED,
+				'delivery_status' => 'expired',
+				'processed_at'    => current_time( 'mysql' ),
+			],
+			[ 'id' => $id ],
+			[ '%s', '%s', '%s' ],
+			[ '%d' ]
+		);
+
+		return (bool) $updated;
+	}
+
+	/**
+	 * Return pending items whose scheduled_at is older than $expiry_minutes.
+	 * These are items that were never picked up (e.g., queue was disabled).
+	 *
+	 * @param int $expiry_minutes
+	 * @return array<int, object>
+	 */
+	public function get_expired_pending_items( int $expiry_minutes = 1440 ): array {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'tsh_wa_queue';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM `{$table}`
+				 WHERE status = 'pending'
+				   AND retry_after IS NULL
+				   AND scheduled_at < DATE_SUB(NOW(), INTERVAL %d MINUTE)",
+				$expiry_minutes
+			)
+		) ?: [];
+	}
+
 	/**
 	 * Get multiple queue items with optional filtering and pagination.
 	 *

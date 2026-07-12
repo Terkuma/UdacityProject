@@ -437,7 +437,13 @@ final class Settings {
 		add_settings_field( 'retry_delay',
 			__( 'Retry Delay (minutes)', 'tsh-whatsapp-notify' ),
 			[ $this, 'render_number_field' ], $option, 'tsh_wa_queue_section',
-			[ 'option_key' => $option, 'field' => 'retry_delay', 'default' => '5', 'min' => 1, 'max' => 1440, 'desc' => __( 'Minutes to wait before retrying a failed message.', 'tsh-whatsapp-notify' ) ]
+			[ 'option_key' => $option, 'field' => 'retry_delay', 'default' => '5', 'min' => 1, 'max' => 1440, 'desc' => __( 'Base delay in minutes before retrying a failed message. Phase 4 applies exponential backoff on top of this value.', 'tsh-whatsapp-notify' ) ]
+		);
+
+		add_settings_field( 'messages_per_minute',
+			__( 'Rate Limit (msg/min)', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_number_field' ], $option, 'tsh_wa_queue_section',
+			[ 'option_key' => $option, 'field' => 'messages_per_minute', 'default' => '80', 'min' => 0, 'max' => 1000, 'desc' => __( 'Maximum WhatsApp messages per minute (0 = unlimited). Meta Cloud API Standard tier cap is ~80/min. Tier 1 businesses may set up to 1000.', 'tsh-whatsapp-notify' ) ]
 		);
 	}
 

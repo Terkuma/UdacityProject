@@ -22,6 +22,10 @@ use TSH\WhatsAppNotify\Orders\AdminRecipient;
 use TSH\WhatsAppNotify\Orders\OrderMessageBuilder;
 use TSH\WhatsAppNotify\Orders\OrderProcessor;
 use TSH\WhatsAppNotify\Orders\OrderQueueDispatcher;
+use TSH\WhatsAppNotify\Queue\DeadLetterQueue;
+use TSH\WhatsAppNotify\Queue\QueueProcessor;
+use TSH\WhatsAppNotify\Queue\QueueStats;
+use TSH\WhatsAppNotify\Queue\RateLimiter;
 
 /**
  * Class Ajax
@@ -59,6 +63,17 @@ final class Ajax {
 			'tsh_wa_save_admin_recipients',
 			'tsh_wa_get_order_notifications',
 			'tsh_wa_delete_admin_recipient',
+			// Phase 4 — Queue delivery engine.
+			'tsh_wa_queue_pause',
+			'tsh_wa_queue_resume',
+			'tsh_wa_queue_process_now',
+			'tsh_wa_get_queue_stats',
+			'tsh_wa_get_queue_health',
+			'tsh_wa_dlq_retry',
+			'tsh_wa_dlq_delete',
+			'tsh_wa_dlq_clear',
+			'tsh_wa_queue_export',
+			'tsh_wa_queue_retry_all',
 		];
 
 		foreach ( $actions as $action ) {
@@ -625,6 +640,176 @@ final class Ajax {
 		}
 
 		return "Hello {customer_name}! 👋\n\nThank you for your order at *{store_name}*.\n\n*Order #{order_number}* — {$event_label}\n\n*Items:*\n{products}\n\n*Total:* {total}\n*Payment:* {payment_method}\n\nTrack your order: {customer_order_url}";
+	}
+
+	// -------------------------------------------------------------------------
+	// Phase 4 — Queue delivery engine handlers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * AJAX: tsh_wa_queue_pause — manually pause queue processing.
+	 */
+	public function handle_tsh_wa_queue_pause(): void {
+		$this->verify_request();
+
+		update_option( 'tsh_wa_queue_paused', '1', false );
+
+		wp_send_json_success( [
+			'message' => __( 'Queue paused. No new messages will be sent until resumed.', 'tsh-whatsapp-notify' ),
+			'paused'  => true,
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_queue_resume — resume a paused queue.
+	 */
+	public function handle_tsh_wa_queue_resume(): void {
+		$this->verify_request();
+
+		delete_option( 'tsh_wa_queue_paused' );
+
+		wp_send_json_success( [
+			'message' => __( 'Queue resumed. Processing will start on the next cron tick.', 'tsh-whatsapp-notify' ),
+			'paused'  => false,
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_queue_process_now — run one batch immediately.
+	 */
+	public function handle_tsh_wa_queue_process_now(): void {
+		$this->verify_request();
+
+		$settings   = get_option( 'tsh_wa_queue_settings', [] );
+		$batch_size = absint( $settings['batch_size'] ?? 10 );
+
+		$processor = new QueueProcessor();
+		$processed = $processor->run( max( 1, $batch_size ) );
+
+		wp_send_json_success( [
+			/* translators: %d: number of items processed */
+			'message' => sprintf( __( '%d item(s) processed.', 'tsh-whatsapp-notify' ), $processed ),
+			'count'   => $processed,
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_get_queue_stats — live dashboard stat counters.
+	 */
+	public function handle_tsh_wa_get_queue_stats(): void {
+		$this->verify_request();
+
+		$stats = new QueueStats();
+
+		wp_send_json_success( $stats->get_summary() );
+	}
+
+	/**
+	 * AJAX: tsh_wa_get_queue_health — health monitor panel.
+	 */
+	public function handle_tsh_wa_get_queue_health(): void {
+		$this->verify_request();
+
+		$stats = new QueueStats();
+
+		wp_send_json_success( [ 'health' => $stats->get_health() ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_dlq_retry — re-queue one dead letter item.
+	 */
+	public function handle_tsh_wa_dlq_retry(): void {
+		$this->verify_request();
+
+		$id = absint( $_POST['queue_id'] ?? 0 );
+		if ( ! $id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid item ID.', 'tsh-whatsapp-notify' ) ] );
+			return;
+		}
+
+		$dlq    = new DeadLetterQueue();
+		$result = $dlq->retry( $id );
+
+		if ( $result ) {
+			wp_send_json_success( [
+				/* translators: %d: queue item ID */
+				'message' => sprintf( __( 'Item #%d re-queued for retry.', 'tsh-whatsapp-notify' ), $id ),
+			] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Item not found in dead letter queue.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_dlq_delete — permanently delete one dead letter item.
+	 */
+	public function handle_tsh_wa_dlq_delete(): void {
+		$this->verify_request();
+
+		$id = absint( $_POST['queue_id'] ?? 0 );
+		if ( ! $id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid item ID.', 'tsh-whatsapp-notify' ) ] );
+			return;
+		}
+
+		$dlq    = new DeadLetterQueue();
+		$result = $dlq->delete( $id );
+
+		if ( $result ) {
+			wp_send_json_success( [
+				/* translators: %d: queue item ID */
+				'message' => sprintf( __( 'Item #%d permanently deleted.', 'tsh-whatsapp-notify' ), $id ),
+			] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Item not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_dlq_clear — delete all dead letter items at once.
+	 */
+	public function handle_tsh_wa_dlq_clear(): void {
+		$this->verify_request();
+
+		$dlq   = new DeadLetterQueue();
+		$count = $dlq->clear();
+
+		wp_send_json_success( [
+			/* translators: %d: number of items deleted */
+			'message' => sprintf( __( '%d dead letter item(s) permanently deleted.', 'tsh-whatsapp-notify' ), $count ),
+			'count'   => $count,
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_queue_export — export DLQ items as JSON.
+	 */
+	public function handle_tsh_wa_queue_export(): void {
+		$this->verify_request();
+
+		$dlq  = new DeadLetterQueue();
+		$data = $dlq->export();
+
+		wp_send_json_success( [
+			'data'  => $data,
+			'count' => count( $data ),
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_queue_retry_all — re-queue all dead letter items.
+	 */
+	public function handle_tsh_wa_queue_retry_all(): void {
+		$this->verify_request();
+
+		$dlq   = new DeadLetterQueue();
+		$count = $dlq->retry_all();
+
+		wp_send_json_success( [
+			/* translators: %d: number of items re-queued */
+			'message' => sprintf( __( '%d item(s) re-queued for retry.', 'tsh-whatsapp-notify' ), $count ),
+			'count'   => $count,
+		] );
 	}
 
 	// -------------------------------------------------------------------------

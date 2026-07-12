@@ -897,4 +897,251 @@
 
 	};
 
+	// ===========================================================================
+	// Phase 4 — Queue Dashboard: live stats refresh + AJAX controls
+	// ===========================================================================
+
+	/**
+	 * initQueueDashboard
+	 *
+	 * Polls `tsh_wa_get_queue_stats` every 30 seconds while the admin is on the
+	 * Queue page.  Updates stat cards, performance metrics, and the health grid
+	 * in-place without a full page reload.
+	 */
+	TshWaAdmin.initQueueDashboard = function () {
+		var $wrap = $( '.tsh-wa-wrap' );
+
+		// Only activate on the Queue admin page.
+		if ( ! $wrap.length || ! $( '#tsh-wa-queue-stats' ).length ) {
+			return;
+		}
+
+		var POLL_INTERVAL = 30000; // 30 seconds
+		var pollTimer;
+
+		// -------------------------------------------------------------------
+		// Stat-card live update
+		// -------------------------------------------------------------------
+
+		function refreshStats() {
+			$( '#tsh-wa-queue-stats' ).addClass( 'tsh-wa-stats-refreshing' );
+
+			TshWaAdmin.ajax(
+				'tsh_wa_get_queue_stats',
+				{},
+				function ( response ) {
+					$( '#tsh-wa-queue-stats' ).removeClass( 'tsh-wa-stats-refreshing' );
+
+					if ( ! response.success || ! response.data ) {
+						return;
+					}
+
+					var d = response.data;
+
+					// Update stat card values by data-stat attribute.
+					updateStatCard( 'pending',    d.counts && d.counts.pending    ? d.counts.pending    : 0 );
+					updateStatCard( 'processing', d.counts && d.counts.processing ? d.counts.processing : 0 );
+					updateStatCard( 'retrying',   d.retrying   || 0 );
+					updateStatCard( 'sent_today', d.sent_today || 0 );
+					updateStatCard( 'dead_letter',d.dead_letter || 0 );
+					updateStatCard( 'throughput', d.throughput_hour || 0 );
+
+					// Update performance metric cells.
+					var latency = d.avg_latency_ms > 0
+						? TshWaAdmin.formatNumber( d.avg_latency_ms, 0 ) + ' ms'
+						: '–';
+					$( '#tsh-wa-metric-latency' ).text( latency );
+
+					var proc = d.avg_process_ms > 0
+						? TshWaAdmin.formatNumber( d.avg_process_ms, 0 ) + ' ms'
+						: '–';
+					$( '#tsh-wa-metric-process' ).text( proc );
+
+					// Pause / resume button visibility.
+					var $pauseBtn  = $( '[name="tsh_wa_action"][value="pause_queue"]' );
+					var $resumeBtn = $( '[name="tsh_wa_action"][value="resume_queue"]' );
+					if ( d.is_paused ) {
+						$pauseBtn.closest( 'form' ).hide();
+						$resumeBtn.closest( 'form' ).show();
+					} else {
+						$pauseBtn.closest( 'form' ).show();
+						$resumeBtn.closest( 'form' ).hide();
+					}
+				},
+				function () {
+					$( '#tsh-wa-queue-stats' ).removeClass( 'tsh-wa-stats-refreshing' );
+				}
+			);
+		}
+
+		// Map stat position indices to data keys (matches card order in template).
+		var STAT_KEYS = [ 'pending', 'processing', 'retrying', 'sent_today', 'dead_letter', 'throughput' ];
+
+		function updateStatCard( key, value ) {
+			var idx = STAT_KEYS.indexOf( key );
+			if ( idx < 0 ) { return; }
+			var $card = $( '#tsh-wa-queue-stats .tsh-wa-stat-card' ).eq( idx );
+			if ( $card.length ) {
+				$card.find( '.tsh-wa-stat-card__value' ).text( formatCount( value ) );
+			}
+		}
+
+		function formatCount( n ) {
+			return parseInt( n, 10 ).toLocaleString();
+		}
+
+		// -------------------------------------------------------------------
+		// AJAX manual controls (progressive enhancement — forms work without JS)
+		// -------------------------------------------------------------------
+
+		// "Process Now" button — fire AJAX, show spinner, refresh stats when done.
+		$( document ).on( 'click', '[name="tsh_wa_action"][value="process_now"]', function ( e ) {
+			e.preventDefault();
+
+			var $btn = $( this );
+			var origText = $btn.html();
+			$btn.html( '<span class="dashicons dashicons-update tsh-wa-spin"></span> ' +
+				( tshWaAdmin.i18n && tshWaAdmin.i18n.processing ? tshWaAdmin.i18n.processing : 'Processing…' ) );
+			$btn.prop( 'disabled', true );
+
+			TshWaAdmin.ajax(
+				'tsh_wa_queue_process_now',
+				{},
+				function ( response ) {
+					$btn.html( origText );
+					$btn.prop( 'disabled', false );
+
+					if ( response.success ) {
+						TshWaAdmin.showNotice( response.data.message || 'Done.', 'success' );
+						refreshStats();
+					} else {
+						TshWaAdmin.showNotice( ( response.data && response.data.message ) || 'Error.', 'error' );
+					}
+				},
+				function () {
+					$btn.html( origText );
+					$btn.prop( 'disabled', false );
+				}
+			);
+		} );
+
+		// "Pause Queue" / "Resume Queue" buttons — AJAX toggles.
+		$( document ).on( 'click', '[name="tsh_wa_action"][value="pause_queue"],' +
+			'[name="tsh_wa_action"][value="resume_queue"]', function ( e ) {
+
+			e.preventDefault();
+
+			var action = $( this ).val() === 'pause_queue'
+				? 'tsh_wa_queue_pause'
+				: 'tsh_wa_queue_resume';
+
+			TshWaAdmin.ajax(
+				action,
+				{},
+				function ( response ) {
+					if ( response.success ) {
+						TshWaAdmin.showNotice( response.data.message, 'success' );
+						refreshStats();
+					}
+				}
+			);
+		} );
+
+		// -------------------------------------------------------------------
+		// Dead Letter Queue AJAX actions (DLQ retry / delete)
+		// -------------------------------------------------------------------
+
+		$( document ).on( 'click', '.tsh-wa-dlq-retry-btn', function ( e ) {
+			e.preventDefault();
+
+			var $btn  = $( this );
+			var qid   = $btn.data( 'queue-id' );
+
+			TshWaAdmin.ajax(
+				'tsh_wa_dlq_retry',
+				{ queue_id: qid },
+				function ( response ) {
+					if ( response.success ) {
+						$btn.closest( 'tr' ).fadeOut( 300, function () { $( this ).remove(); } );
+						TshWaAdmin.showNotice( response.data.message, 'success' );
+						refreshStats();
+					} else {
+						TshWaAdmin.showNotice( ( response.data && response.data.message ) || 'Error.', 'error' );
+					}
+				}
+			);
+		} );
+
+		$( document ).on( 'click', '.tsh-wa-dlq-delete-btn', function ( e ) {
+			e.preventDefault();
+
+			if ( ! window.confirm( tshWaAdmin.i18n && tshWaAdmin.i18n.confirmDelete
+				? tshWaAdmin.i18n.confirmDelete
+				: 'Delete this item permanently?' ) ) {
+				return;
+			}
+
+			var $btn = $( this );
+			var qid  = $btn.data( 'queue-id' );
+
+			TshWaAdmin.ajax(
+				'tsh_wa_dlq_delete',
+				{ queue_id: qid },
+				function ( response ) {
+					if ( response.success ) {
+						$btn.closest( 'tr' ).fadeOut( 300, function () { $( this ).remove(); } );
+						TshWaAdmin.showNotice( response.data.message, 'success' );
+						refreshStats();
+					} else {
+						TshWaAdmin.showNotice( ( response.data && response.data.message ) || 'Error.', 'error' );
+					}
+				}
+			);
+		} );
+
+		// -------------------------------------------------------------------
+		// Auto-polling
+		// -------------------------------------------------------------------
+
+		// Initial poll after 5 seconds (page just loaded, don't hammer immediately).
+		setTimeout( function () {
+			refreshStats();
+			pollTimer = setInterval( refreshStats, POLL_INTERVAL );
+		}, 5000 );
+
+		// Stop polling if the page is hidden (tab switching).
+		document.addEventListener( 'visibilitychange', function () {
+			if ( document.hidden ) {
+				clearInterval( pollTimer );
+			} else {
+				refreshStats();
+				pollTimer = setInterval( refreshStats, POLL_INTERVAL );
+			}
+		} );
+
+		// -------------------------------------------------------------------
+		// Utility: show a transient admin notice
+		// -------------------------------------------------------------------
+
+		TshWaAdmin.showNotice = TshWaAdmin.showNotice || function ( message, type ) {
+			var cls  = 'notice-' + ( type || 'info' );
+			var $n   = $( '<div class="notice ' + cls + ' is-dismissible tsh-wa-ajax-notice"><p></p></div>' );
+			$n.find( 'p' ).text( message );
+			$( '.tsh-wa-wrap .tsh-wa-page-header' ).after( $n );
+
+			setTimeout( function () {
+				$n.fadeOut( 400, function () { $( this ).remove(); } );
+			}, 4000 );
+		};
+
+		TshWaAdmin.formatNumber = TshWaAdmin.formatNumber || function ( num, decimals ) {
+			return parseFloat( num ).toFixed( decimals || 0 );
+		};
+	};
+
+	// Auto-init on DOM ready.
+	$( function () {
+		TshWaAdmin.initQueueDashboard();
+	} );
+
 } )( jQuery );

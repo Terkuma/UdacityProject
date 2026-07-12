@@ -1434,3 +1434,314 @@ details[open] > .tsh-wa-mb-preview__summary::before {
 	font-style: italic;
 }
 
+/* =============================================================================
+   PHASE 4 — Queue Delivery Engine
+   ============================================================================= */
+
+/* --- 6-column stats grid -------------------------------------------------- */
+.tsh-wa-stats-grid--6 {
+	grid-template-columns: repeat( 6, 1fr );
+}
+
+@media ( max-width: 1400px ) {
+	.tsh-wa-stats-grid--6 {
+		grid-template-columns: repeat( 3, 1fr );
+	}
+}
+
+@media ( max-width: 900px ) {
+	.tsh-wa-stats-grid--6 {
+		grid-template-columns: repeat( 2, 1fr );
+	}
+}
+
+/* --- Stat card colour variants -------------------------------------------- */
+.tsh-wa-stat-card--yellow {
+	border-top-color: #f39c12;
+}
+
+.tsh-wa-stat-card--yellow .tsh-wa-stat-card__value {
+	color: #f39c12;
+}
+
+.tsh-wa-stat-card--grey {
+	border-top-color: #95a5a6;
+}
+
+.tsh-wa-stat-card--grey .tsh-wa-stat-card__value {
+	color: #7f8c8d;
+}
+
+.tsh-wa-stat-card--teal {
+	border-top-color: #1abc9c;
+}
+
+.tsh-wa-stat-card--teal .tsh-wa-stat-card__value {
+	color: #16a085;
+}
+
+.tsh-wa-stat-card--purple {
+	border-top-color: #9b59b6;
+}
+
+.tsh-wa-stat-card--purple .tsh-wa-stat-card__value {
+	color: #8e44ad;
+}
+
+/* --- Badge extras --------------------------------------------------------- */
+.tsh-wa-badge--large {
+	font-size: 13px;
+	padding: 4px 10px;
+	vertical-align: middle;
+	margin-left: 8px;
+}
+
+.tsh-wa-badge--sm {
+	font-size: 10px;
+	padding: 2px 6px;
+}
+
+.tsh-wa-badge--yellow {
+	background: #fff3cd;
+	color: #856404;
+}
+
+.tsh-wa-badge--teal {
+	background: #d1f2eb;
+	color: #0e6655;
+}
+
+.tsh-wa-badge--purple {
+	background: #e8daef;
+	color: #6c3483;
+}
+
+/* --- Health badges -------------------------------------------------------- */
+.tsh-wa-health-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+	padding: 3px 8px;
+	border-radius: 3px;
+	font-weight: 500;
+}
+
+.tsh-wa-health-badge .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+	line-height: 14px;
+}
+
+.tsh-wa-health-badge--ok {
+	background: #d4edda;
+	color: #155724;
+}
+
+.tsh-wa-health-badge--warning {
+	background: #fff3cd;
+	color: #856404;
+}
+
+.tsh-wa-health-badge--error {
+	background: #f8d7da;
+	color: #721c24;
+}
+
+/* --- Health grid (inside panel) ------------------------------------------- */
+.tsh-wa-health-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px 20px;
+}
+
+.tsh-wa-health-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.tsh-wa-health-item strong {
+	font-size: 12px;
+	color: var(--tsh-wa-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+/* --- Two-column panel layout ---------------------------------------------- */
+.tsh-wa-two-col {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 20px;
+	margin-bottom: 20px;
+}
+
+@media ( max-width: 900px ) {
+	.tsh-wa-two-col {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* --- Key-value table (performance metrics) -------------------------------- */
+.tsh-wa-kv-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.tsh-wa-kv-table th,
+.tsh-wa-kv-table td {
+	padding: 8px 0;
+	border-bottom: 1px solid var(--tsh-wa-border);
+	font-size: 13px;
+}
+
+.tsh-wa-kv-table th {
+	text-align: left;
+	color: var(--tsh-wa-text-muted);
+	font-weight: 500;
+	width: 60%;
+}
+
+.tsh-wa-kv-table td {
+	font-weight: 600;
+	color: var(--tsh-wa-text);
+}
+
+.tsh-wa-kv-table tr:last-child th,
+.tsh-wa-kv-table tr:last-child td {
+	border-bottom: none;
+}
+
+/* --- Refresh hint --------------------------------------------------------- */
+.tsh-wa-refresh-hint {
+	font-size: 11px;
+	color: var(--tsh-wa-text-muted);
+	font-style: italic;
+}
+
+/* --- Controls row --------------------------------------------------------- */
+.tsh-wa-panel--controls .tsh-wa-panel__body {
+	padding: 16px;
+}
+
+.tsh-wa-controls-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+
+.tsh-wa-controls-row .button {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.tsh-wa-controls-row .button .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+	line-height: 14px;
+}
+
+/* --- Count badge on buttons ----------------------------------------------- */
+.tsh-wa-count-badge {
+	display: inline-block;
+	background: rgba( 0, 0, 0, 0.15 );
+	border-radius: 10px;
+	font-size: 10px;
+	font-weight: 700;
+	padding: 1px 6px;
+	min-width: 18px;
+	text-align: center;
+	line-height: 16px;
+}
+
+/* --- Dead Letter Queue panel ---------------------------------------------- */
+.tsh-wa-panel--dlq {
+	border-top: 3px solid #c0392b;
+}
+
+.tsh-wa-panel--dlq .tsh-wa-panel__header {
+	background: #fdf2f2;
+}
+
+.tsh-wa-panel__desc {
+	font-size: 13px;
+	color: var(--tsh-wa-text-muted);
+	margin: 4px 0 0;
+}
+
+.tsh-wa-dlq-more {
+	padding: 10px 0 0;
+	font-size: 12px;
+	color: var(--tsh-wa-text-muted);
+}
+
+/* --- Queue table row colour hints ----------------------------------------- */
+.tsh-wa-queue-row--failed td {
+	background: #fdf5f5;
+}
+
+.tsh-wa-queue-row--processing td {
+	background: #fffbf0;
+}
+
+/* --- Page header actions (top-right area) --------------------------------- */
+.tsh-wa-page-header__inner {
+	flex: 1;
+}
+
+.tsh-wa-page-header__actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+/* --- Text truncation helper ----------------------------------------------- */
+.tsh-wa-text-truncate {
+	display: block;
+	max-width: 200px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* --- Error hint (⚠ icon next to message) ---------------------------------- */
+.tsh-wa-error-hint {
+	display: inline-block;
+	color: #c0392b;
+	margin-left: 4px;
+	cursor: help;
+	font-style: normal;
+}
+
+/* --- Error cell in DLQ table --------------------------------------------- */
+.tsh-wa-error-cell {
+	max-width: 220px;
+}
+
+.tsh-wa-error-excerpt {
+	display: block;
+	font-size: 11px;
+	color: #c0392b;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: help;
+}
+
+/* --- Actions cell (retry + delete buttons) -------------------------------- */
+.tsh-wa-actions-cell {
+	white-space: nowrap;
+}
+
+/* --- Live-stats AJAX spinner overlay ------------------------------------- */
+.tsh-wa-stats-refreshing .tsh-wa-stat-card__value {
+	opacity: 0.5;
+	transition: opacity 0.3s;
+}
+
+

@@ -35,7 +35,7 @@ final class Installer {
 	 * Current database schema version.
 	 * Increment this constant whenever tables are altered.
 	 */
-	public const DB_VERSION = '3.0.0';
+	public const DB_VERSION = '4.0.0';
 
 	/**
 	 * Run the installer — create or upgrade all tables.
@@ -99,22 +99,29 @@ final class Installer {
 			message         LONGTEXT             NOT NULL,
 			template_id     BIGINT(20) UNSIGNED           DEFAULT NULL,
 			order_id        BIGINT(20) UNSIGNED           DEFAULT NULL,
-			status          VARCHAR(20)          NOT NULL DEFAULT 'pending' COMMENT 'pending|processing|sent|failed|cancelled',
-			priority        TINYINT(3) UNSIGNED  NOT NULL DEFAULT 5         COMMENT '1 = highest, 10 = lowest',
+			status          VARCHAR(20)          NOT NULL DEFAULT 'pending'  COMMENT 'pending|processing|sent|failed|cancelled',
+			priority        TINYINT(3) UNSIGNED  NOT NULL DEFAULT 5          COMMENT '1 = highest, 10 = lowest',
 			attempts        TINYINT(3) UNSIGNED  NOT NULL DEFAULT 0,
 			max_attempts    TINYINT(3) UNSIGNED  NOT NULL DEFAULT 3,
 			scheduled_at    DATETIME             NOT NULL,
 			processed_at    DATETIME                      DEFAULT NULL,
 			error_message   TEXT                          DEFAULT NULL,
-			meta            LONGTEXT                      DEFAULT NULL      COMMENT 'JSON-encoded extra data',
+			meta            LONGTEXT                      DEFAULT NULL       COMMENT 'JSON-encoded extra data',
+			retry_after     DATETIME                      DEFAULT NULL       COMMENT 'Phase 4: earliest time for next retry attempt',
+			message_id      VARCHAR(100)                  DEFAULT NULL       COMMENT 'Phase 4: WhatsApp message ID from API response',
+			delivery_status VARCHAR(20)          NOT NULL DEFAULT 'queued'   COMMENT 'Phase 4: queued|sending|sent|delivered|read|failed|expired|retrying',
+			worker_id       VARCHAR(64)                   DEFAULT NULL       COMMENT 'Phase 4: worker ID that processed this item',
+			latency_ms      DECIMAL(10,3)                 DEFAULT NULL       COMMENT 'Phase 4: API call latency in milliseconds',
 			created_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			PRIMARY KEY     (id),
-			KEY             idx_status       (status),
-			KEY             idx_phone        (phone),
-			KEY             idx_order_id     (order_id),
-			KEY             idx_scheduled_at (scheduled_at),
-			KEY             idx_priority     (priority)
+			KEY             idx_status           (status),
+			KEY             idx_phone            (phone),
+			KEY             idx_order_id         (order_id),
+			KEY             idx_scheduled_at     (scheduled_at),
+			KEY             idx_priority         (priority),
+			KEY             idx_delivery_status  (delivery_status),
+			KEY             idx_retry_after      (retry_after)
 		) ENGINE=InnoDB {$charset_collate};";
 
 		// ------------------------------------------------------------------
@@ -202,6 +209,45 @@ final class Installer {
 			KEY              idx_status       (status),
 			KEY              idx_queue_id     (queue_id),
 			KEY              idx_dedup        (order_id, event, recipient_phone, status)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Delivery events table (Phase 4) — per-item status timeline
+		// ------------------------------------------------------------------
+		$delivery_events = $wpdb->prefix . 'tsh_wa_delivery_events';
+		$sql[] = "CREATE TABLE {$delivery_events} (
+			id              BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			queue_id        BIGINT(20) UNSIGNED  NOT NULL                    COMMENT 'FK → tsh_wa_queue.id',
+			status          VARCHAR(20)          NOT NULL                    COMMENT 'queued|sending|sent|delivered|read|failed|expired|retrying',
+			response_data   LONGTEXT                      DEFAULT NULL       COMMENT 'JSON: raw API response or context',
+			created_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY     (id),
+			KEY             idx_queue_id   (queue_id),
+			KEY             idx_status     (status),
+			KEY             idx_created_at (created_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Worker log table (Phase 4) — one row per cron batch run
+		// ------------------------------------------------------------------
+		$worker_log = $wpdb->prefix . 'tsh_wa_worker_log';
+		$sql[] = "CREATE TABLE {$worker_log} (
+			id               BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			worker_id        VARCHAR(64)          NOT NULL,
+			started_at       DATETIME             NOT NULL,
+			finished_at      DATETIME                      DEFAULT NULL,
+			batch_size       TINYINT(3) UNSIGNED  NOT NULL DEFAULT 10,
+			items_processed  INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			items_sent       INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			items_failed     INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			items_retried    INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			items_skipped    INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			duration_ms      DECIMAL(10,3)                 DEFAULT NULL,
+			rate_limited     TINYINT(1)           NOT NULL DEFAULT 0        COMMENT '1 if batch was cut short by rate limiter',
+			created_at       DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY      (id),
+			KEY              idx_worker_id  (worker_id),
+			KEY              idx_started_at (started_at)
 		) ENGINE=InnoDB {$charset_collate};";
 
 		foreach ( $sql as $statement ) {

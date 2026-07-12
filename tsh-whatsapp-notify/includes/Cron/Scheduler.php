@@ -37,6 +37,7 @@ final class Scheduler {
 	public const HOOK_RETRY_FAILED  = 'tsh_wa_retry_failed';
 	public const HOOK_PRUNE_LOGS    = 'tsh_wa_prune_logs';
 	public const HOOK_HEALTH_CHECK  = 'tsh_wa_health_check';
+	public const HOOK_EXPIRE_QUEUE  = 'tsh_wa_expire_queue'; // Phase 4
 
 	/**
 	 * Constructor — attaches WP hooks immediately on instantiation.
@@ -50,9 +51,10 @@ final class Scheduler {
 
 		// Callbacks for each cron hook.
 		add_action( self::HOOK_PROCESS_QUEUE, [ $this, 'handle_process_queue' ] );
-		add_action( self::HOOK_RETRY_FAILED,  [ $this, 'handle_retry_failed' ] );
-		add_action( self::HOOK_PRUNE_LOGS,    [ $this, 'handle_prune_logs' ] );
-		add_action( self::HOOK_HEALTH_CHECK,  [ $this, 'handle_health_check' ] );
+		add_action( self::HOOK_RETRY_FAILED,  [ $this, 'handle_retry_failed'  ] );
+		add_action( self::HOOK_PRUNE_LOGS,    [ $this, 'handle_prune_logs'    ] );
+		add_action( self::HOOK_HEALTH_CHECK,  [ $this, 'handle_health_check'  ] );
+		add_action( self::HOOK_EXPIRE_QUEUE,  [ $this, 'handle_expire_queue'  ] ); // Phase 4
 	}
 
 	// -------------------------------------------------------------------------
@@ -110,6 +112,7 @@ final class Scheduler {
 			self::HOOK_RETRY_FAILED,
 			self::HOOK_PRUNE_LOGS,
 			self::HOOK_HEALTH_CHECK,
+			self::HOOK_EXPIRE_QUEUE,
 		];
 
 		foreach ( $hooks as $hook ) {
@@ -134,6 +137,9 @@ final class Scheduler {
 				'recurrence' => 'daily',
 			],
 			self::HOOK_HEALTH_CHECK  => [
+				'recurrence' => 'hourly',
+			],
+			self::HOOK_EXPIRE_QUEUE  => [   // Phase 4
 				'recurrence' => 'hourly',
 			],
 		];
@@ -202,6 +208,14 @@ final class Scheduler {
 	}
 
 	/**
+	 * Handle queue-expiry cron trigger — Phase 4.
+	 * Delegates to QueueProcessor::expire_stale_items() via the action hook.
+	 */
+	public function handle_expire_queue(): void {
+		do_action( 'tsh_wa_cron_expire_queue' );
+	}
+
+	/**
 	 * Handle API health-check cron trigger.
 	 * Full implementation: Phase 2 (API layer).
 	 */
@@ -231,6 +245,7 @@ final class Scheduler {
 			self::HOOK_RETRY_FAILED,
 			self::HOOK_PRUNE_LOGS,
 			self::HOOK_HEALTH_CHECK,
+			self::HOOK_EXPIRE_QUEUE,
 		];
 
 		$times = [];

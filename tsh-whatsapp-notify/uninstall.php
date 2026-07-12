@@ -34,8 +34,10 @@ $tables = [
 	$wpdb->prefix . 'tsh_wa_queue',
 	$wpdb->prefix . 'tsh_wa_templates',
 	$wpdb->prefix . 'tsh_wa_settings',
-	$wpdb->prefix . 'tsh_wa_api_requests',   // Phase 2
-	$wpdb->prefix . 'tsh_wa_notifications',  // Phase 3
+	$wpdb->prefix . 'tsh_wa_api_requests',    // Phase 2
+	$wpdb->prefix . 'tsh_wa_notifications',   // Phase 3
+	$wpdb->prefix . 'tsh_wa_delivery_events', // Phase 4
+	$wpdb->prefix . 'tsh_wa_worker_log',      // Phase 4
 ];
 
 foreach ( $tables as $table ) {
@@ -65,6 +67,9 @@ $options = [
 	// Phase 3 — WooCommerce order integration.
 	'tsh_wa_wc_events_settings',
 	'tsh_wa_admin_recipients',
+	// Phase 4 — Queue delivery engine.
+	'tsh_wa_queue_paused',
+	'tsh_wa_queue_worker_lock', // WorkerLock::LOCK_KEY — stored in options table
 ];
 
 foreach ( $options as $option ) {
@@ -76,7 +81,9 @@ foreach ( $options as $option ) {
 // ---------------------------------------------------------------------------
 
 $transients = [
-	'tsh_wa_api_health_status',  // Phase 2 — 10-min cached health check.
+	'tsh_wa_api_health_status',   // Phase 2 — 10-min cached health check.
+	'tsh_wa_rate_bucket',         // Phase 4 — rate limiter sliding window.
+	'tsh_wa_queue_worker_lock',   // Phase 4 — worker mutex (stored in options, cleared here too).
 ];
 
 foreach ( $transients as $transient ) {
@@ -93,6 +100,7 @@ $cron_hooks = [
 	'tsh_wa_prune_logs',
 	'tsh_wa_health_check',
 	'tsh_wa_cron_health_check',  // Phase 2 — HealthMonitor cron action.
+	'tsh_wa_expire_queue',       // Phase 4 — hourly queue expiry.
 ];
 
 foreach ( $cron_hooks as $hook ) {
