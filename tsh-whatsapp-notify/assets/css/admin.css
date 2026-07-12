@@ -1788,3 +1788,706 @@ details[open] > .tsh-wa-mb-preview__summary::before {
 }
 
 
+
+/* ==========================================================================
+   Phase 5 — Template Manager Styles
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Template page layout
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-page--templates .tsh-wa-page__header {
+	display: flex;
+	align-items: center;
+	gap: var(--tsh-wa-space-3);
+	flex-wrap: wrap;
+	margin-bottom: var(--tsh-wa-space-4);
+}
+
+.tsh-wa-page--templates .tsh-wa-page__header-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--tsh-wa-space-2);
+	margin-left: auto;
+	flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------------
+   Stats bar (template overview)
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-stats-bar--templates {
+	display: flex;
+	gap: var(--tsh-wa-space-3);
+	flex-wrap: wrap;
+	margin-bottom: var(--tsh-wa-space-4);
+}
+
+.tsh-wa-stats-bar--templates .tsh-wa-stat-card {
+	flex: 1 1 120px;
+	min-width: 100px;
+	background: #fff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 14px 16px;
+	text-align: center;
+}
+
+.tsh-wa-stat-card__value {
+	font-size: 1.75rem;
+	font-weight: 700;
+	line-height: 1.1;
+	color: var(--tsh-wa-color-text-primary, #1a202c);
+}
+
+.tsh-wa-stat-card__value--green  { color: #22c55e; }
+.tsh-wa-stat-card__value--orange { color: #f59e0b; }
+.tsh-wa-stat-card__value--red    { color: #ef4444; }
+
+.tsh-wa-stat-card__label {
+	font-size: 0.75rem;
+	color: #64748b;
+	margin-top: 4px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+/* --------------------------------------------------------------------------
+   Filter bar
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-filter-bar {
+	display: flex;
+	align-items: center;
+	gap: var(--tsh-wa-space-2);
+	flex-wrap: wrap;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 12px 16px;
+	margin-bottom: var(--tsh-wa-space-4);
+}
+
+.tsh-wa-filter-bar__form {
+	display: flex;
+	align-items: center;
+	gap: var(--tsh-wa-space-2);
+	flex-wrap: wrap;
+	flex: 1;
+}
+
+.tsh-wa-filter-bar__actions {
+	display: flex;
+	gap: var(--tsh-wa-space-2);
+	margin-left: auto;
+}
+
+.tsh-wa-filter-bar__search {
+	position: relative;
+}
+
+.tsh-wa-input--search {
+	min-width: 220px;
+	padding: 6px 12px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	font-size: 0.875rem;
+}
+
+.tsh-wa-filter-bar__select {
+	min-width: 140px;
+	max-width: 180px;
+}
+
+/* --------------------------------------------------------------------------
+   Template table columns
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-table--templates .tsh-wa-col--name       { width: 25%; }
+.tsh-wa-table--templates .tsh-wa-col--category   { width: 10%; }
+.tsh-wa-table--templates .tsh-wa-col--language   { width: 10%; }
+.tsh-wa-table--templates .tsh-wa-col--status     { width: 9%; }
+.tsh-wa-table--templates .tsh-wa-col--quality    { width: 8%; }
+.tsh-wa-table--templates .tsh-wa-col--usage      { width: 8%; }
+.tsh-wa-table--templates .tsh-wa-col--assignment { width: 13%; }
+.tsh-wa-table--templates .tsh-wa-col--synced     { width: 9%; }
+.tsh-wa-table--templates .tsh-wa-col--actions    { width: 8%; }
+
+.tsh-wa-template-name {
+	font-size: 0.9rem;
+	color: var(--tsh-wa-color-text-primary, #1a202c);
+}
+
+.tsh-wa-template-body-preview {
+	font-size: 0.75rem;
+	color: #64748b;
+	margin-top: 3px;
+	line-height: 1.4;
+}
+
+.tsh-wa-template-meta-id {
+	margin-top: 3px;
+}
+
+.tsh-wa-text--small  { font-size: 0.75rem; }
+.tsh-wa-text--muted  { color: #64748b; }
+.tsh-wa-text--center { text-align: center; }
+.tsh-wa-text--danger { color: #ef4444; }
+
+/* --------------------------------------------------------------------------
+   Sort icons
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-sort-icon {
+	display: inline-block;
+	font-size: 0.75rem;
+	opacity: 0.5;
+	margin-left: 2px;
+}
+
+.tsh-wa-sort-icon--asc,
+.tsh-wa-sort-icon--desc {
+	opacity: 1;
+	color: #6366f1;
+}
+
+/* --------------------------------------------------------------------------
+   Status pills (used in templates page)
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-status-pill {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 8px;
+	border-radius: 12px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.tsh-wa-status-pill.tsh-wa-status--success { background: #dcfce7; color: #166534; }
+.tsh-wa-status-pill.tsh-wa-status--warning { background: #fef9c3; color: #854d0e; }
+.tsh-wa-status-pill.tsh-wa-status--danger  { background: #fee2e2; color: #991b1b; }
+.tsh-wa-status-pill.tsh-wa-status--default { background: #f1f5f9; color: #475569; }
+
+/* --------------------------------------------------------------------------
+   Badges
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 10px;
+	font-size: 0.7rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.tsh-wa-badge--count  { font-size: 0.8rem; vertical-align: middle; margin-left: 6px; }
+.tsh-wa-badge--blue   { background: #dbeafe; color: #1e40af; }
+.tsh-wa-badge--purple { background: #ede9fe; color: #5b21b6; }
+.tsh-wa-badge--orange { background: #ffedd5; color: #c2410c; }
+.tsh-wa-badge--green  { background: #dcfce7; color: #166534; }
+.tsh-wa-badge--red    { background: #fee2e2; color: #991b1b; }
+.tsh-wa-badge--grey   { background: #f1f5f9; color: #475569; }
+
+/* --------------------------------------------------------------------------
+   Assignment badges (table)
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-assignment-badge {
+	display: inline-block;
+	font-size: 0.7rem;
+	padding: 2px 6px;
+	border-radius: 4px;
+	margin-bottom: 2px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 140px;
+}
+
+.tsh-wa-assignment-badge--customer { background: #eff6ff; color: #1e40af; }
+.tsh-wa-assignment-badge--admin    { background: #f0fdf4; color: #166534; }
+
+/* --------------------------------------------------------------------------
+   Row actions
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-row-actions {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+}
+
+/* --------------------------------------------------------------------------
+   Empty state
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-empty-state {
+	padding: 60px 20px;
+	text-align: center;
+}
+
+.tsh-wa-empty-state__icon {
+	font-size: 3rem;
+	margin-bottom: 12px;
+}
+
+.tsh-wa-empty-state__title {
+	font-size: 1.1rem;
+	font-weight: 600;
+	color: #374151;
+	margin-bottom: 8px;
+}
+
+.tsh-wa-empty-state__message {
+	color: #6b7280;
+	font-size: 0.9rem;
+	margin-bottom: 20px;
+	max-width: 400px;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+/* --------------------------------------------------------------------------
+   Pagination
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-pagination {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	border-top: 1px solid #e2e8f0;
+	flex-wrap: wrap;
+	gap: var(--tsh-wa-space-2);
+}
+
+.tsh-wa-pagination__info {
+	color: #64748b;
+	font-size: 0.875rem;
+}
+
+.tsh-wa-pagination__links {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+}
+
+.tsh-wa-pagination__current {
+	background: #6366f1 !important;
+	color: #fff !important;
+	border-color: #6366f1 !important;
+	cursor: default;
+}
+
+/* --------------------------------------------------------------------------
+   Modal
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 160000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.tsh-wa-modal__backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.55);
+}
+
+.tsh-wa-modal__container {
+	position: relative;
+	background: #fff;
+	border-radius: 10px;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+	display: flex;
+	flex-direction: column;
+	max-height: 90vh;
+	width: 680px;
+	max-width: calc(100vw - 40px);
+	overflow: hidden;
+}
+
+.tsh-wa-modal__container--wide {
+	width: 960px;
+}
+
+.tsh-wa-modal__header {
+	display: flex;
+	align-items: center;
+	padding: 20px 24px;
+	border-bottom: 1px solid #e2e8f0;
+	flex-shrink: 0;
+}
+
+.tsh-wa-modal__title {
+	font-size: 1.1rem;
+	font-weight: 600;
+	margin: 0;
+	flex: 1;
+	color: #1a202c;
+}
+
+.tsh-wa-modal__template-name {
+	font-size: 0.875rem;
+	font-weight: 400;
+	color: #64748b;
+	margin-left: 8px;
+}
+
+.tsh-wa-modal__close {
+	background: none;
+	border: none;
+	cursor: pointer;
+	font-size: 1.2rem;
+	color: #64748b;
+	padding: 4px 8px;
+	border-radius: 4px;
+	transition: background 0.15s;
+}
+
+.tsh-wa-modal__close:hover {
+	background: #f1f5f9;
+	color: #1a202c;
+}
+
+.tsh-wa-modal__body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 24px;
+}
+
+.tsh-wa-modal__footer {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--tsh-wa-space-2);
+	padding: 16px 24px;
+	border-top: 1px solid #e2e8f0;
+	flex-shrink: 0;
+}
+
+.tsh-wa-modal__loading {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 40px;
+	justify-content: center;
+	color: #64748b;
+}
+
+.tsh-wa-modal__error {
+	padding: 24px;
+	text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   Preview layout (left / right panes)
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-preview-layout {
+	display: flex;
+	gap: 24px;
+	min-height: 400px;
+}
+
+.tsh-wa-preview-layout__left {
+	flex: 1;
+	min-width: 0;
+}
+
+.tsh-wa-preview-layout__right {
+	width: 280px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.tsh-wa-section-heading {
+	font-size: 0.8rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #64748b;
+	margin: 0 0 10px;
+	padding-bottom: 6px;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+/* --------------------------------------------------------------------------
+   WhatsApp bubble preview
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-whatsapp-preview {
+	background: #ece5dd;
+	border-radius: 10px;
+	padding: 16px;
+	min-height: 100px;
+}
+
+.tsh-wa-whatsapp-preview__header {
+	font-weight: 700;
+	font-size: 0.9rem;
+	margin-bottom: 6px;
+	color: #1a202c;
+}
+
+.tsh-wa-whatsapp-preview__bubble {
+	background: #fff;
+	border-radius: 8px;
+	padding: 10px 14px;
+	box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+	position: relative;
+}
+
+.tsh-wa-whatsapp-preview__body {
+	font-size: 0.9rem;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: #1a202c;
+}
+
+.tsh-wa-whatsapp-preview__footer {
+	font-size: 0.75rem;
+	color: #64748b;
+	margin-top: 6px;
+	border-top: 1px solid #f1f5f9;
+	padding-top: 4px;
+}
+
+.tsh-wa-whatsapp-preview__timestamp {
+	font-size: 0.65rem;
+	color: #94a3b8;
+	text-align: right;
+	margin-top: 4px;
+}
+
+.tsh-wa-whatsapp-preview__buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 8px;
+}
+
+.tsh-wa-preview-button {
+	background: #25D366;
+	color: #fff;
+	border: none;
+	border-radius: 6px;
+	padding: 8px 14px;
+	font-size: 0.85rem;
+	font-weight: 600;
+	text-align: center;
+	cursor: default;
+}
+
+.tsh-wa-preview-button--url    { background: #128C7E; }
+.tsh-wa-preview-button--phone  { background: #34B7F1; }
+.tsh-wa-preview-button--copy   { background: #64748b; }
+
+/* --------------------------------------------------------------------------
+   Preview meta definition list
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-preview-meta {
+	margin-top: 16px;
+}
+
+.tsh-wa-definition-list {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 6px 16px;
+	font-size: 0.8rem;
+	margin: 0;
+}
+
+.tsh-wa-definition-list dt {
+	color: #64748b;
+	font-weight: 600;
+}
+
+.tsh-wa-definition-list dd {
+	margin: 0;
+	color: #1a202c;
+}
+
+/* --------------------------------------------------------------------------
+   Variable inspector
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-variable-inspector {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 14px;
+}
+
+.tsh-wa-variable-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px 0;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.tsh-wa-variable-row:last-child {
+	border-bottom: none;
+}
+
+.tsh-wa-variable-row__label {
+	font-size: 0.75rem;
+	font-weight: 700;
+	color: #6366f1;
+}
+
+.tsh-wa-variable-row__input {
+	width: 100%;
+	padding: 5px 8px;
+	border: 1px solid #d1d5db;
+	border-radius: 4px;
+	font-size: 0.8rem;
+}
+
+.tsh-wa-variable-row__wc-field {
+	font-size: 0.7rem;
+	color: #94a3b8;
+}
+
+/* --------------------------------------------------------------------------
+   Assignment panel
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-assignment-panel {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 14px;
+}
+
+.tsh-wa-assignment-panel__row {
+	margin-bottom: 12px;
+}
+
+.tsh-wa-assignment-panel__actions {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 12px;
+}
+
+.tsh-wa-label {
+	display: block;
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: #374151;
+	margin-bottom: 4px;
+}
+
+.tsh-wa-select--full { width: 100%; }
+
+.tsh-wa-radio-group {
+	display: flex;
+	gap: 16px;
+}
+
+.tsh-wa-radio-label {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 0.8rem;
+	cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+   Inline notices
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-inline-notice {
+	padding: 8px 12px;
+	border-radius: 6px;
+	font-size: 0.8rem;
+	margin-top: 8px;
+}
+
+.tsh-wa-inline-notice--success { background: #dcfce7; color: #166534; }
+.tsh-wa-inline-notice--error   { background: #fee2e2; color: #991b1b; }
+.tsh-wa-inline-notice--warning { background: #fef9c3; color: #854d0e; }
+
+/* --------------------------------------------------------------------------
+   Spinner
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-spinner {
+	width: 24px;
+	height: 24px;
+	border: 3px solid #e2e8f0;
+	border-top-color: #6366f1;
+	border-radius: 50%;
+	animation: tsh-wa-spin 0.8s linear infinite;
+}
+
+@keyframes tsh-wa-spin {
+	to { transform: rotate(360deg); }
+}
+
+/* --------------------------------------------------------------------------
+   Import / textarea
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-textarea {
+	width: 100%;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	padding: 8px 12px;
+	font-size: 0.85rem;
+	resize: vertical;
+}
+
+.tsh-wa-textarea--code {
+	font-family: 'Courier New', monospace;
+	font-size: 0.8rem;
+}
+
+.tsh-wa-form-row {
+	margin-bottom: 16px;
+}
+
+/* --------------------------------------------------------------------------
+   Sync status pill in page header
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-status-pill--header {
+	display: inline-flex;
+	align-items: center;
+	padding: 4px 12px;
+	border-radius: 20px;
+	font-size: 0.8rem;
+	font-weight: 500;
+}
+
+/* --------------------------------------------------------------------------
+   Notice styles
+   -------------------------------------------------------------------------- */
+
+.tsh-wa-notice--inline {
+	padding: 10px 14px;
+	border-radius: 6px;
+	font-size: 0.875rem;
+	margin-bottom: 16px;
+}
+
+.tsh-wa-notice--error {
+	background: #fee2e2;
+	border-left: 4px solid #ef4444;
+	color: #991b1b;
+}

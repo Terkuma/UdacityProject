@@ -26,6 +26,11 @@ use TSH\WhatsAppNotify\Queue\DeadLetterQueue;
 use TSH\WhatsAppNotify\Queue\QueueProcessor;
 use TSH\WhatsAppNotify\Queue\QueueStats;
 use TSH\WhatsAppNotify\Queue\RateLimiter;
+use TSH\WhatsAppNotify\Templates\TemplateAssignment;
+use TSH\WhatsAppNotify\Templates\TemplateExporter;
+use TSH\WhatsAppNotify\Templates\TemplateImporter;
+use TSH\WhatsAppNotify\Templates\TemplateManager;
+use TSH\WhatsAppNotify\Templates\TemplateSync;
 
 /**
  * Class Ajax
@@ -74,6 +79,22 @@ final class Ajax {
 			'tsh_wa_dlq_clear',
 			'tsh_wa_queue_export',
 			'tsh_wa_queue_retry_all',
+			// Phase 5 — Template management.
+			'tsh_wa_sync_templates',
+			'tsh_wa_force_full_sync',
+			'tsh_wa_get_template_preview',
+			'tsh_wa_assign_template',
+			'tsh_wa_unassign_template',
+			'tsh_wa_get_template_assignments',
+			'tsh_wa_search_templates',
+			'tsh_wa_get_templates_page',
+			'tsh_wa_validate_template',
+			'tsh_wa_test_template',
+			'tsh_wa_import_templates',
+			'tsh_wa_export_templates',
+			'tsh_wa_flush_template_cache',
+			'tsh_wa_get_template_analytics',
+			'tsh_wa_get_template_stats',
 		];
 
 		foreach ( $actions as $action ) {
@@ -810,6 +831,335 @@ final class Ajax {
 			'message' => sprintf( __( '%d item(s) re-queued for retry.', 'tsh-whatsapp-notify' ), $count ),
 			'count'   => $count,
 		] );
+	}
+
+	// -------------------------------------------------------------------------
+	// Phase 5 — Template management handlers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * AJAX: tsh_wa_sync_templates — run a manual sync.
+	 */
+	public function handle_tsh_wa_sync_templates(): void {
+		$this->verify_request();
+		$manager = new TemplateManager();
+		$result  = $manager->sync( 'manual' );
+		if ( $result['success'] ) {
+			wp_send_json_success( $result );
+		} else {
+			wp_send_json_error( [ 'message' => $result['message'], 'stats' => $result['stats'] ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_force_full_sync — truncate + re-fetch all templates.
+	 */
+	public function handle_tsh_wa_force_full_sync(): void {
+		$this->verify_request();
+		$manager = new TemplateManager();
+		$result  = $manager->sync( 'full' );
+		if ( $result['success'] ) {
+			wp_send_json_success( $result );
+		} else {
+			wp_send_json_error( [ 'message' => $result['message'], 'stats' => $result['stats'] ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_get_template_preview — render template preview data.
+	 */
+	public function handle_tsh_wa_get_template_preview(): void {
+		$this->verify_request();
+
+		$template_id = absint( $_POST['template_id'] ?? 0 );
+		if ( ! $template_id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid template ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$variables = [];
+		if ( ! empty( $_POST['variables'] ) && is_array( $_POST['variables'] ) ) {
+			foreach ( $_POST['variables'] as $k => $v ) {
+				$variables[ (string) absint( $k ) ] = sanitize_text_field( $v );
+			}
+		}
+
+		$manager = new TemplateManager();
+		$result  = $manager->preview( $template_id, $variables );
+
+		if ( $result['success'] ) {
+			wp_send_json_success( $result['data'] );
+		} else {
+			wp_send_json_error( [ 'message' => $result['message'] ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_assign_template — assign a template to a WC event.
+	 */
+	public function handle_tsh_wa_assign_template(): void {
+		$this->verify_request();
+
+		$event          = sanitize_key( $_POST['event'] ?? '' );
+		$template_id    = absint( $_POST['template_id'] ?? 0 );
+		$recipient_type = sanitize_text_field( $_POST['recipient_type'] ?? 'customer' );
+
+		if ( ! $event ) {
+			wp_send_json_error( [ 'message' => __( 'Event name is required.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$manager = new TemplateManager();
+		$result  = $manager->assign( $event, $template_id, $recipient_type );
+
+		if ( $result ) {
+			wp_send_json_success( [ 'message' => __( 'Template assigned.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Failed to assign template.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_unassign_template — remove a template assignment.
+	 */
+	public function handle_tsh_wa_unassign_template(): void {
+		$this->verify_request();
+
+		$event          = sanitize_key( $_POST['event'] ?? '' );
+		$recipient_type = sanitize_text_field( $_POST['recipient_type'] ?? 'customer' );
+
+		if ( ! $event ) {
+			wp_send_json_error( [ 'message' => __( 'Event name is required.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$manager = new TemplateManager();
+		$result  = $manager->unassign( $event, $recipient_type );
+
+		if ( $result ) {
+			wp_send_json_success( [ 'message' => __( 'Template unassigned.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Failed to remove assignment.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_get_template_assignments — return all current assignments.
+	 */
+	public function handle_tsh_wa_get_template_assignments(): void {
+		$this->verify_request();
+
+		$manager     = new TemplateManager();
+		$assignments = $manager->get_assignments();
+
+		wp_send_json_success( [ 'assignments' => $assignments ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_search_templates — instant search.
+	 */
+	public function handle_tsh_wa_search_templates(): void {
+		$this->verify_request();
+
+		$query    = sanitize_text_field( $_POST['query'] ?? '' );
+		$category = sanitize_text_field( $_POST['category'] ?? '' );
+		$language = sanitize_text_field( $_POST['language'] ?? '' );
+		$status   = sanitize_text_field( $_POST['status'] ?? '' );
+		$per_page = absint( $_POST['per_page'] ?? 25 );
+		$page     = absint( $_POST['page'] ?? 1 );
+
+		$filters = array_filter( compact( 'category', 'language', 'status', 'per_page', 'page' ) );
+
+		$manager = new TemplateManager();
+		$result  = $manager->search( $query, $filters );
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: tsh_wa_get_templates_page — paginated template list.
+	 */
+	public function handle_tsh_wa_get_templates_page(): void {
+		$this->verify_request();
+
+		$args = [
+			'page'     => absint( $_POST['page'] ?? 1 ),
+			'per_page' => absint( $_POST['per_page'] ?? 25 ),
+			'orderby'  => sanitize_key( $_POST['orderby'] ?? 'created_at' ),
+			'order'    => strtoupper( sanitize_key( $_POST['order'] ?? 'DESC' ) ),
+		];
+
+		foreach ( [ 'status', 'category', 'language', 'quality' ] as $filter ) {
+			if ( ! empty( $_POST[ $filter ] ) ) {
+				$args[ $filter ] = sanitize_text_field( $_POST[ $filter ] );
+			}
+		}
+
+		if ( ! empty( $_POST['search'] ) ) {
+			$args['search'] = sanitize_text_field( $_POST['search'] );
+		}
+
+		$manager = new TemplateManager();
+		$result  = $manager->get_templates( $args );
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: tsh_wa_validate_template — validate template field data.
+	 */
+	public function handle_tsh_wa_validate_template(): void {
+		$this->verify_request();
+
+		$data = [
+			'template_name' => sanitize_text_field( $_POST['template_name'] ?? '' ),
+			'category'      => sanitize_text_field( $_POST['category'] ?? '' ),
+			'language'      => sanitize_text_field( $_POST['language'] ?? '' ),
+			'body'          => wp_kses_post( $_POST['body'] ?? '' ),
+			'footer'        => sanitize_text_field( $_POST['footer'] ?? '' ),
+		];
+
+		$manager = new TemplateManager();
+		$result  = $manager->validate( $data );
+
+		if ( $result['valid'] ) {
+			wp_send_json_success( [ 'message' => __( 'Template data is valid.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'errors' => $result['errors'] ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_test_template — send a test message using a template.
+	 *
+	 * Builds a preview of the template body with example variable values and
+	 * enqueues it directly without requiring a WooCommerce order.
+	 */
+	public function handle_tsh_wa_test_template(): void {
+		$this->verify_request();
+
+		$template_id = absint( $_POST['template_id'] ?? 0 );
+		$phone       = sanitize_text_field( $_POST['phone'] ?? '' );
+
+		if ( ! $template_id || ! $phone ) {
+			wp_send_json_error( [ 'message' => __( 'Template ID and phone number are required.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		if ( ! Helpers::is_plugin_ready() ) {
+			wp_send_json_error( [ 'message' => __( 'WhatsApp API is not configured.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		// Build rendered preview text using example variable values.
+		$manager     = new TemplateManager();
+		$preview     = $manager->preview( $template_id );
+
+		if ( ! $preview['success'] ) {
+			wp_send_json_error( [ 'message' => $preview['message'] ?? __( 'Template not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$rendered_body = $preview['data']['body_rendered'] ?? $preview['data']['body'] ?? '';
+
+		if ( ! $rendered_body ) {
+			wp_send_json_error( [ 'message' => __( 'Template body is empty.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		// Enqueue via the generic Queue class — no WC order ID required for tests.
+		$queue = new \TSH\WhatsAppNotify\Queue\Queue();
+		$queue_id = $queue->add( [
+			'phone'        => $phone,
+			'message'      => $rendered_body,
+			'order_id'     => null,
+			'priority'     => 1,
+			'scheduled_at' => current_time( 'mysql' ),
+			'meta'         => [
+				'event_key'      => 'template_test',
+				'recipient_type' => 'admin',
+				'template_id'    => $template_id,
+				'is_test'        => true,
+			],
+		] );
+
+		if ( $queue_id ) {
+			wp_send_json_success( [
+				/* translators: %d: queue item ID */
+				'message' => sprintf( __( 'Test message queued (ID #%d).', 'tsh-whatsapp-notify' ), $queue_id ),
+			] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Failed to queue test message.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_import_templates — import templates from JSON or CSV.
+	 */
+	public function handle_tsh_wa_import_templates(): void {
+		$this->verify_request();
+
+		$format = sanitize_key( $_POST['format'] ?? 'json' );
+		$mode   = sanitize_key( $_POST['mode'] ?? 'merge' );
+		$data   = wp_unslash( $_POST['data'] ?? '' );
+
+		if ( empty( $data ) ) {
+			wp_send_json_error( [ 'message' => __( 'No import data provided.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$manager = new TemplateManager();
+		$result  = $manager->import( $data, $format, $mode );
+
+		if ( $result['errors'] > 0 && 0 === $result['imported'] ) {
+			wp_send_json_error( $result );
+		} else {
+			wp_send_json_success( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_export_templates — export templates as JSON or CSV.
+	 */
+	public function handle_tsh_wa_export_templates(): void {
+		$this->verify_request();
+
+		$format      = sanitize_key( $_POST['format'] ?? 'json' );
+		$ids_raw     = $_POST['template_ids'] ?? [];
+		$template_ids = is_array( $ids_raw ) ? array_map( 'absint', $ids_raw ) : [];
+
+		$manager = new TemplateManager();
+		$output  = $manager->export( $format, $template_ids );
+
+		wp_send_json_success( [
+			'data'     => $output,
+			'format'   => $format,
+			'filename' => 'tsh-wa-templates-' . gmdate( 'Y-m-d' ) . '.' . $format,
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_flush_template_cache — flush all template transients.
+	 */
+	public function handle_tsh_wa_flush_template_cache(): void {
+		$this->verify_request();
+
+		$manager = new TemplateManager();
+		$manager->flush_cache();
+
+		wp_send_json_success( [ 'message' => __( 'Template cache cleared.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_get_template_analytics — return full analytics dataset.
+	 */
+	public function handle_tsh_wa_get_template_analytics(): void {
+		$this->verify_request();
+
+		$manager = new TemplateManager();
+		wp_send_json_success( $manager->get_analytics() );
+	}
+
+	/**
+	 * AJAX: tsh_wa_get_template_stats — lightweight stats for the dashboard widget.
+	 */
+	public function handle_tsh_wa_get_template_stats(): void {
+		$this->verify_request();
+
+		$manager = new TemplateManager();
+		wp_send_json_success( $manager->get_dashboard_overview() );
 	}
 
 	// -------------------------------------------------------------------------

@@ -35,7 +35,7 @@ final class Installer {
 	 * Current database schema version.
 	 * Increment this constant whenever tables are altered.
 	 */
-	public const DB_VERSION = '4.0.0';
+	public const DB_VERSION = '5.0.0';
 
 	/**
 	 * Run the installer — create or upgrade all tables.
@@ -248,6 +248,65 @@ final class Installer {
 			PRIMARY KEY      (id),
 			KEY              idx_worker_id  (worker_id),
 			KEY              idx_started_at (started_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Meta templates table (Phase 5) — synced from Meta Graph API
+		// ------------------------------------------------------------------
+		$meta_templates = $wpdb->prefix . 'tsh_wa_meta_templates';
+		$sql[] = "CREATE TABLE {$meta_templates} (
+			id                BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			meta_template_id  VARCHAR(100)         NOT NULL                   COMMENT 'Template ID from Meta Graph API',
+			template_name     VARCHAR(200)         NOT NULL                   COMMENT 'Meta template name (lowercase, underscores)',
+			category          VARCHAR(30)          NOT NULL DEFAULT 'UTILITY' COMMENT 'UTILITY|MARKETING|AUTHENTICATION',
+			language          VARCHAR(20)          NOT NULL DEFAULT 'en',
+			status            VARCHAR(20)          NOT NULL DEFAULT 'PENDING' COMMENT 'APPROVED|PENDING|REJECTED|PAUSED|DISABLED|DELETED|DRAFT|EXPIRED',
+			quality_score     VARCHAR(20)          NOT NULL DEFAULT 'UNKNOWN' COMMENT 'HIGH|MEDIUM|LOW|UNKNOWN',
+			namespace         VARCHAR(200)                  DEFAULT NULL       COMMENT 'WhatsApp Business API namespace',
+			header_type       VARCHAR(20)                   DEFAULT NULL       COMMENT 'TEXT|IMAGE|VIDEO|DOCUMENT|LOCATION',
+			header_content    LONGTEXT                      DEFAULT NULL       COMMENT 'JSON: header component data from Meta',
+			body              LONGTEXT                      DEFAULT NULL       COMMENT 'Template body text with {{N}} placeholders',
+			footer            VARCHAR(60)                   DEFAULT NULL,
+			buttons           LONGTEXT                      DEFAULT NULL       COMMENT 'JSON array of button objects',
+			variables         LONGTEXT                      DEFAULT NULL       COMMENT 'JSON array of example variable values',
+			example_values    LONGTEXT                      DEFAULT NULL       COMMENT 'JSON: full components array from Meta for example rendering',
+			variable_mapping  LONGTEXT                      DEFAULT NULL       COMMENT 'JSON: admin-configured {N: {wc_field, example}} map',
+			usage_count       INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			send_success      INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			send_failed       INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			raw_data          LONGTEXT                      DEFAULT NULL       COMMENT 'JSON: raw API response object',
+			last_synced       DATETIME                      DEFAULT NULL,
+			last_used         DATETIME                      DEFAULT NULL,
+			created_at        DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at        DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY       (id),
+			UNIQUE KEY        uq_meta_id      (meta_template_id),
+			KEY               idx_name        (template_name),
+			KEY               idx_category    (category),
+			KEY               idx_language    (language),
+			KEY               idx_status      (status),
+			KEY               idx_quality     (quality_score),
+			KEY               idx_last_synced (last_synced),
+			KEY               idx_usage       (usage_count)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Template assignments table (Phase 5) — WC event → template mapping
+		// ------------------------------------------------------------------
+		$template_assignments = $wpdb->prefix . 'tsh_wa_template_assignments';
+		$sql[] = "CREATE TABLE {$template_assignments} (
+			id              BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			event           VARCHAR(100)         NOT NULL                   COMMENT 'WooCommerce event key e.g. order_processing',
+			template_id     BIGINT(20) UNSIGNED  NOT NULL                   COMMENT 'FK → tsh_wa_meta_templates.id',
+			recipient_type  VARCHAR(20)          NOT NULL DEFAULT 'customer' COMMENT 'customer|admin',
+			language        VARCHAR(20)                   DEFAULT NULL       COMMENT 'Language preference override',
+			active          TINYINT(1)           NOT NULL DEFAULT 1,
+			created_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY     (id),
+			UNIQUE KEY      uq_event_recipient  (event, recipient_type),
+			KEY             idx_template_id     (template_id),
+			KEY             idx_active          (active)
 		) ENGINE=InnoDB {$charset_collate};";
 
 		foreach ( $sql as $statement ) {

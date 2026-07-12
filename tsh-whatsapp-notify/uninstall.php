@@ -34,10 +34,12 @@ $tables = [
 	$wpdb->prefix . 'tsh_wa_queue',
 	$wpdb->prefix . 'tsh_wa_templates',
 	$wpdb->prefix . 'tsh_wa_settings',
-	$wpdb->prefix . 'tsh_wa_api_requests',    // Phase 2
-	$wpdb->prefix . 'tsh_wa_notifications',   // Phase 3
-	$wpdb->prefix . 'tsh_wa_delivery_events', // Phase 4
-	$wpdb->prefix . 'tsh_wa_worker_log',      // Phase 4
+	$wpdb->prefix . 'tsh_wa_api_requests',        // Phase 2
+	$wpdb->prefix . 'tsh_wa_notifications',        // Phase 3
+	$wpdb->prefix . 'tsh_wa_delivery_events',      // Phase 4
+	$wpdb->prefix . 'tsh_wa_worker_log',           // Phase 4
+	$wpdb->prefix . 'tsh_wa_template_assignments', // Phase 5
+	$wpdb->prefix . 'tsh_wa_meta_templates',       // Phase 5
 ];
 
 foreach ( $tables as $table ) {
@@ -69,7 +71,13 @@ $options = [
 	'tsh_wa_admin_recipients',
 	// Phase 4 — Queue delivery engine.
 	'tsh_wa_queue_paused',
-	'tsh_wa_queue_worker_lock', // WorkerLock::LOCK_KEY — stored in options table
+	'tsh_wa_queue_worker_lock',          // WorkerLock::LOCK_KEY — stored in options table
+	// Phase 5 — Template management.
+	'tsh_wa_sync_settings',
+	'tsh_wa_template_last_sync',         // TemplateSync::OPTION_LAST_SYNC
+	'tsh_wa_template_sync_status',       // TemplateSync::OPTION_SYNC_STATUS
+	'tsh_wa_template_sync_last_error',   // TemplateSync::OPTION_LAST_ERROR
+	'tsh_wa_tmpl_cache_keys',            // TemplateCache::REGISTRY_OPTION
 ];
 
 foreach ( $options as $option ) {
@@ -86,6 +94,11 @@ $transients = [
 	'tsh_wa_queue_worker_lock',   // Phase 4 — worker mutex (stored in options, cleared here too).
 ];
 
+// Phase 5 — bulk-delete all template cache transients by prefix.
+$like_pattern = $wpdb->esc_like( '_transient_tsh_wa_tmpl_' ) . '%';
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared
+$wpdb->query( $wpdb->prepare( "DELETE FROM `{$wpdb->options}` WHERE option_name LIKE %s", $like_pattern ) );
+
 foreach ( $transients as $transient ) {
 	delete_transient( $transient );
 }
@@ -99,8 +112,11 @@ $cron_hooks = [
 	'tsh_wa_retry_failed',
 	'tsh_wa_prune_logs',
 	'tsh_wa_health_check',
-	'tsh_wa_cron_health_check',  // Phase 2 — HealthMonitor cron action.
-	'tsh_wa_expire_queue',       // Phase 4 — hourly queue expiry.
+	'tsh_wa_cron_health_check',            // Phase 2 — HealthMonitor cron action.
+	'tsh_wa_expire_queue',                 // Phase 4 — hourly queue expiry.
+	'tsh_wa_sync_templates',               // Phase 5 — hourly template sync.
+	'tsh_wa_refresh_template_quality',     // Phase 5 — daily quality refresh.
+	'tsh_wa_background_template_sync',     // Phase 5 — one-shot background sync.
 ];
 
 foreach ( $cron_hooks as $hook ) {

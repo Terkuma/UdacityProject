@@ -22,6 +22,8 @@ use TSH\WhatsAppNotify\Database\Installer;
 use TSH\WhatsAppNotify\Orders\OrderListener;
 use TSH\WhatsAppNotify\Orders\OrderStatusListener;
 use TSH\WhatsAppNotify\Queue\QueueProcessor;
+use TSH\WhatsAppNotify\Templates\TemplateManager;
+use TSH\WhatsAppNotify\Templates\TemplateSync;
 
 /**
  * Class Loader
@@ -119,6 +121,13 @@ final class Loader {
 
 		// Phase 3: Order listener — hooks WC lifecycle events → OrderProcessor.
 		$this->components['order_listener'] = new OrderListener();
+
+		// Phase 5: Template manager — registers background sync hook and orchestrates all template services.
+		$this->components['template_manager'] = new TemplateManager();
+
+		// Phase 5: Template sync — ensure the scheduled and background cron hooks are registered.
+		add_action( Scheduler::HOOK_SYNC_TEMPLATES,           [ new TemplateSync(), 'scheduled_sync' ] );
+		add_action( Scheduler::HOOK_REFRESH_TEMPLATE_QUALITY, [ new TemplateSync(), 'manual_sync'    ] );
 
 		// Admin-only components — never loaded on the frontend.
 		if ( is_admin() ) {

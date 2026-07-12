@@ -33,11 +33,13 @@ final class Scheduler {
 	// Hook names
 	// -------------------------------------------------------------------------
 
-	public const HOOK_PROCESS_QUEUE = 'tsh_wa_process_queue';
-	public const HOOK_RETRY_FAILED  = 'tsh_wa_retry_failed';
-	public const HOOK_PRUNE_LOGS    = 'tsh_wa_prune_logs';
-	public const HOOK_HEALTH_CHECK  = 'tsh_wa_health_check';
-	public const HOOK_EXPIRE_QUEUE  = 'tsh_wa_expire_queue'; // Phase 4
+	public const HOOK_PROCESS_QUEUE           = 'tsh_wa_process_queue';
+	public const HOOK_RETRY_FAILED            = 'tsh_wa_retry_failed';
+	public const HOOK_PRUNE_LOGS              = 'tsh_wa_prune_logs';
+	public const HOOK_HEALTH_CHECK            = 'tsh_wa_health_check';
+	public const HOOK_EXPIRE_QUEUE            = 'tsh_wa_expire_queue';           // Phase 4
+	public const HOOK_SYNC_TEMPLATES          = 'tsh_wa_sync_templates';          // Phase 5
+	public const HOOK_REFRESH_TEMPLATE_QUALITY = 'tsh_wa_refresh_template_quality'; // Phase 5
 
 	/**
 	 * Constructor — attaches WP hooks immediately on instantiation.
@@ -54,7 +56,9 @@ final class Scheduler {
 		add_action( self::HOOK_RETRY_FAILED,  [ $this, 'handle_retry_failed'  ] );
 		add_action( self::HOOK_PRUNE_LOGS,    [ $this, 'handle_prune_logs'    ] );
 		add_action( self::HOOK_HEALTH_CHECK,  [ $this, 'handle_health_check'  ] );
-		add_action( self::HOOK_EXPIRE_QUEUE,  [ $this, 'handle_expire_queue'  ] ); // Phase 4
+		add_action( self::HOOK_EXPIRE_QUEUE,             [ $this, 'handle_expire_queue'             ] ); // Phase 4
+		add_action( self::HOOK_SYNC_TEMPLATES,           [ $this, 'handle_sync_templates'           ] ); // Phase 5
+		add_action( self::HOOK_REFRESH_TEMPLATE_QUALITY, [ $this, 'handle_refresh_template_quality' ] ); // Phase 5
 	}
 
 	// -------------------------------------------------------------------------
@@ -113,6 +117,8 @@ final class Scheduler {
 			self::HOOK_PRUNE_LOGS,
 			self::HOOK_HEALTH_CHECK,
 			self::HOOK_EXPIRE_QUEUE,
+			self::HOOK_SYNC_TEMPLATES,           // Phase 5
+			self::HOOK_REFRESH_TEMPLATE_QUALITY, // Phase 5
 		];
 
 		foreach ( $hooks as $hook ) {
@@ -142,7 +148,25 @@ final class Scheduler {
 			self::HOOK_EXPIRE_QUEUE  => [   // Phase 4
 				'recurrence' => 'hourly',
 			],
+			self::HOOK_SYNC_TEMPLATES => [  // Phase 5
+				'recurrence' => $this->get_sync_interval(),
+			],
+			self::HOOK_REFRESH_TEMPLATE_QUALITY => [  // Phase 5
+				'recurrence' => 'daily',
+			],
 		];
+	}
+
+	/**
+	 * Return the configured template sync recurrence interval.
+	 * Falls back to 'hourly' when not configured or invalid.
+	 */
+	private function get_sync_interval(): string {
+		$settings = get_option( 'tsh_wa_sync_settings', [] );
+		$interval = $settings['sync_interval'] ?? 'hourly';
+
+		$allowed = [ 'tsh_wa_every_minute', 'tsh_wa_every_five_minutes', 'hourly', 'twicedaily', 'daily' ];
+		return in_array( $interval, $allowed, true ) ? $interval : 'hourly';
 	}
 
 	// -------------------------------------------------------------------------
@@ -216,6 +240,20 @@ final class Scheduler {
 	}
 
 	/**
+	 * Handle scheduled template sync cron trigger — Phase 5.
+	 */
+	public function handle_sync_templates(): void {
+		do_action( 'tsh_wa_cron_sync_templates' );
+	}
+
+	/**
+	 * Handle template quality refresh cron trigger — Phase 5.
+	 */
+	public function handle_refresh_template_quality(): void {
+		do_action( 'tsh_wa_cron_refresh_template_quality' );
+	}
+
+	/**
 	 * Handle API health-check cron trigger.
 	 * Full implementation: Phase 2 (API layer).
 	 */
@@ -246,6 +284,8 @@ final class Scheduler {
 			self::HOOK_PRUNE_LOGS,
 			self::HOOK_HEALTH_CHECK,
 			self::HOOK_EXPIRE_QUEUE,
+			self::HOOK_SYNC_TEMPLATES,            // Phase 5
+			self::HOOK_REFRESH_TEMPLATE_QUALITY,  // Phase 5
 		];
 
 		$times = [];

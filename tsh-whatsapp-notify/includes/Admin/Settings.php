@@ -394,6 +394,100 @@ final class Settings {
 			[ $this, 'render_checkbox_field' ], $option, 'tsh_wa_template_section',
 			[ 'option_key' => $option, 'field' => 'enable_emoji', 'label' => __( 'Allow emoji characters in message bodies.', 'tsh-whatsapp-notify' ) ]
 		);
+
+		// Phase 5 — Meta template sync settings registered under their own option key.
+		$sync_option = 'tsh_wa_sync_settings';
+
+		register_setting( $sync_option, $sync_option, [
+			'sanitize_callback' => [ $this, 'sanitize_sync_settings' ],
+		] );
+
+		add_settings_section(
+			'tsh_wa_template_sync_section',
+			__( 'Meta Template Sync', 'tsh-whatsapp-notify' ),
+			static function (): void {
+				echo '<p>' . esc_html__( 'Configure automatic synchronisation of approved templates from your Meta WhatsApp Business Account.', 'tsh-whatsapp-notify' ) . '</p>';
+			},
+			$sync_option
+		);
+
+		add_settings_field( 'auto_sync',
+			__( 'Auto Sync', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_checkbox_field' ], $sync_option, 'tsh_wa_template_sync_section',
+			[ 'option_key' => $sync_option, 'field' => 'auto_sync', 'label' => __( 'Automatically sync Meta templates on the configured interval.', 'tsh-whatsapp-notify' ) ]
+		);
+
+		add_settings_field( 'sync_interval',
+			__( 'Sync Interval', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_select_field' ], $sync_option, 'tsh_wa_template_sync_section',
+			[
+				'option_key' => $sync_option,
+				'field'      => 'sync_interval',
+				'default'    => 'hourly',
+				'options'    => [
+					'hourly'    => __( 'Hourly', 'tsh-whatsapp-notify' ),
+					'twicedaily' => __( 'Twice Daily', 'tsh-whatsapp-notify' ),
+					'daily'     => __( 'Daily', 'tsh-whatsapp-notify' ),
+				],
+				'desc' => __( 'How often to fetch updated templates from Meta.', 'tsh-whatsapp-notify' ),
+			]
+		);
+
+		add_settings_field( 'background_sync',
+			__( 'Background Sync', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_checkbox_field' ], $sync_option, 'tsh_wa_template_sync_section',
+			[ 'option_key' => $sync_option, 'field' => 'background_sync', 'label' => __( 'Run syncs in the background via WP-Cron so they do not block the admin UI.', 'tsh-whatsapp-notify' ) ]
+		);
+
+		add_settings_field( 'cache_duration',
+			__( 'Cache Duration (minutes)', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_number_field' ], $sync_option, 'tsh_wa_template_sync_section',
+			[ 'option_key' => $sync_option, 'field' => 'cache_duration', 'default' => '60', 'min' => 5, 'max' => 1440, 'desc' => __( 'How long to cache template data before a fresh DB query (5–1440 minutes).', 'tsh-whatsapp-notify' ) ]
+		);
+
+		add_settings_field( 'max_templates',
+			__( 'Max Templates to Sync', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_number_field' ], $sync_option, 'tsh_wa_template_sync_section',
+			[ 'option_key' => $sync_option, 'field' => 'max_templates', 'default' => '500', 'min' => 50, 'max' => 5000, 'desc' => __( 'Maximum number of templates to fetch per sync run (50–5000).', 'tsh-whatsapp-notify' ) ]
+		);
+
+		add_settings_field( 'retry_failed_sync',
+			__( 'Retry Failed Sync', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_checkbox_field' ], $sync_option, 'tsh_wa_template_sync_section',
+			[ 'option_key' => $sync_option, 'field' => 'retry_failed_sync', 'label' => __( 'Automatically retry the sync if it fails.', 'tsh-whatsapp-notify' ) ]
+		);
+
+		add_settings_field( 'fallback_language',
+			__( 'Fallback Language', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_text_field' ], $sync_option, 'tsh_wa_template_sync_section',
+			[
+				'option_key'  => $sync_option,
+				'field'       => 'fallback_language',
+				'default'     => 'en',
+				'placeholder' => 'en',
+				'desc'        => __( 'Language code used when no matching template is found for the customer\'s language.', 'tsh-whatsapp-notify' ),
+			]
+		);
+	}
+
+	/**
+	 * Sanitise Phase 5 sync settings.
+	 *
+	 * @param array<string, mixed> $input
+	 * @return array<string, mixed>
+	 */
+	public function sanitize_sync_settings( array $input ): array {
+		$valid_intervals = [ 'hourly', 'twicedaily', 'daily' ];
+
+		return [
+			'auto_sync'          => ! empty( $input['auto_sync'] )          ? '1' : '0',
+			'sync_interval'      => in_array( $input['sync_interval'] ?? '', $valid_intervals, true ) ? $input['sync_interval'] : 'hourly',
+			'background_sync'    => ! empty( $input['background_sync'] )    ? '1' : '0',
+			'cache_duration'     => max( 5, min( 1440, absint( $input['cache_duration'] ?? 60 ) ) ),
+			'max_templates'      => max( 50, min( 5000, absint( $input['max_templates'] ?? 500 ) ) ),
+			'retry_failed_sync'  => ! empty( $input['retry_failed_sync'] )  ? '1' : '0',
+			'fallback_language'  => sanitize_text_field( $input['fallback_language'] ?? 'en' ),
+		];
 	}
 
 	// -------------------------------------------------------------------------

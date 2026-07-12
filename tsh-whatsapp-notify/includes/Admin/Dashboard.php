@@ -18,6 +18,7 @@ use TSH\WhatsAppNotify\Database\Installer;
 use TSH\WhatsAppNotify\Helpers\Helpers;
 use TSH\WhatsAppNotify\Logger\Logger;
 use TSH\WhatsAppNotify\Queue\Queue;
+use TSH\WhatsAppNotify\Templates\TemplateManager;
 
 /**
  * Class Dashboard
@@ -121,10 +122,39 @@ final class Dashboard {
 			'url_orders' => admin_url( 'admin.php?page=tsh-whatsapp-notify-orders' ),
 
 			// Navigation links.
-			'url_settings' => admin_url( 'admin.php?page=tsh-whatsapp-notify-settings' ),
-			'url_queue'    => admin_url( 'admin.php?page=tsh-whatsapp-notify-queue' ),
-			'url_logs'     => admin_url( 'admin.php?page=tsh-whatsapp-notify-logs' ),
+			'url_settings'   => admin_url( 'admin.php?page=tsh-whatsapp-notify-settings' ),
+			'url_queue'      => admin_url( 'admin.php?page=tsh-whatsapp-notify-queue' ),
+			'url_logs'       => admin_url( 'admin.php?page=tsh-whatsapp-notify-logs' ),
+			'url_templates'  => admin_url( 'admin.php?page=tsh-whatsapp-notify-templates' ),
+
+			// Phase 5 — Template overview widgets.
+			'template_stats' => $this->get_template_stats(),
 		];
+	}
+
+	/**
+	 * Gather template stats for the Phase 5 dashboard widget.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function get_template_stats(): array {
+		try {
+			$manager = new TemplateManager();
+			return $manager->get_dashboard_overview();
+		} catch ( \Throwable $e ) {
+			return [
+				'total'           => 0,
+				'approved'        => 0,
+				'pending'         => 0,
+				'rejected'        => 0,
+				'paused'          => 0,
+				'total_sends'     => 0,
+				'success_rate'    => 0.0,
+				'last_sync'       => null,
+				'sync_status'     => 'never',
+				'last_sync_error' => '',
+			];
+		}
 	}
 
 	/**

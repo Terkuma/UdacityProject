@@ -1145,3 +1145,475 @@
 	} );
 
 } )( jQuery );
+
+/* ==========================================================================
+   Phase 5 — Template Manager Modules
+   ========================================================================== */
+
+// -------------------------------------------------------------------------
+// Template Manager — main orchestrator module
+// -------------------------------------------------------------------------
+
+window.TshWaAdmin = window.TshWaAdmin || {};
+
+TshWaAdmin.initTemplateManager = function () {
+	if ( ! document.getElementById( 'tsh-wa-btn-sync-templates' ) ) return;
+
+	// Sync Now button.
+	$( '#tsh-wa-btn-sync-templates, #tsh-wa-btn-sync-templates-empty' ).on( 'click', function () {
+		TshWaAdmin.runTemplateSync( 'tsh_wa_sync_templates', $( this ) );
+	} );
+
+	// Full Reset Sync button.
+	$( '#tsh-wa-btn-force-full-sync' ).on( 'click', function () {
+		var confirmMsg = $( this ).data( 'confirm' ) || tshWaAdmin.i18n.confirm_full_sync;
+		if ( ! window.confirm( confirmMsg ) ) return;
+		TshWaAdmin.runTemplateSync( 'tsh_wa_force_full_sync', $( this ) );
+	} );
+
+	// Flush cache button.
+	$( '#tsh-wa-btn-flush-cache' ).on( 'click', function () {
+		var $btn = $( this );
+		$btn.prop( 'disabled', true ).text( '…' );
+		$.post( tshWaAdmin.ajaxUrl, {
+			action:      'tsh_wa_flush_template_cache',
+			_ajax_nonce: $btn.data( 'nonce' ) || tshWaAdmin.nonce,
+		}, function ( resp ) {
+			TshWaAdmin.showNotice( resp.success
+				? ( resp.data.message || tshWaAdmin.i18n.cache_flushed )
+				: tshWaAdmin.i18n.error, resp.success ? 'success' : 'error' );
+		} ).always( function () {
+			$btn.prop( 'disabled', false ).text( tshWaAdmin.i18n ? 'Flush Cache' : 'Flush Cache' );
+		} );
+	} );
+
+	// Row preview buttons.
+	$( document ).on( 'click', '.tsh-wa-btn-preview-template', function () {
+		var templateId = $( this ).data( 'template-id' );
+		TshWaAdmin.openPreviewModal( templateId );
+	} );
+
+	// Row assign buttons.
+	$( document ).on( 'click', '.tsh-wa-btn-assign-template', function () {
+		var templateId   = $( this ).data( 'template-id' );
+		var templateName = $( this ).data( 'template-name' );
+		TshWaAdmin.openPreviewModal( templateId, templateName, true );
+	} );
+
+	// Import button.
+	$( '#tsh-wa-btn-import-templates' ).on( 'click', function () {
+		TshWaAdmin.openImportModal();
+	} );
+
+	// Export button.
+	$( '#tsh-wa-btn-export-templates' ).on( 'click', function () {
+		TshWaAdmin.runTemplateExport( $( this ) );
+	} );
+};
+
+// Run a template sync (manual or full).
+TshWaAdmin.runTemplateSync = function ( action, $btn ) {
+	var nonce    = $btn.data( 'nonce' ) || tshWaAdmin.nonce;
+	var origText = $btn.text();
+
+	$btn.prop( 'disabled', true ).text( tshWaAdmin.i18n.syncing || 'Syncing…' );
+	$( '#tsh-wa-sync-status-pill' ).text( tshWaAdmin.i18n.syncing || 'Syncing…' );
+
+	$.post( tshWaAdmin.ajaxUrl, { action: action, _ajax_nonce: nonce }, function ( resp ) {
+		if ( resp.success ) {
+			var stats   = resp.data.stats || {};
+			var message = resp.data.message || tshWaAdmin.i18n.sync_complete;
+			TshWaAdmin.showNotice( message, 'success' );
+			$( '#tsh-wa-sync-status-pill' ).text( 'Just now' );
+
+			// Refresh the page to show the updated table.
+			setTimeout( function () { window.location.reload(); }, 1200 );
+		} else {
+			TshWaAdmin.showNotice( resp.data.message || tshWaAdmin.i18n.sync_error, 'error' );
+			$( '#tsh-wa-sync-status-pill' ).text( 'Sync failed' );
+		}
+	} ).fail( function () {
+		TshWaAdmin.showNotice( tshWaAdmin.i18n.error, 'error' );
+	} ).always( function () {
+		$btn.prop( 'disabled', false ).text( origText );
+	} );
+};
+
+// Export templates (download file).
+TshWaAdmin.runTemplateExport = function ( $btn ) {
+	var nonce = $btn.data( 'nonce' ) || tshWaAdmin.nonce;
+
+	$btn.prop( 'disabled', true );
+
+	$.post( tshWaAdmin.ajaxUrl, {
+		action:      'tsh_wa_export_templates',
+		format:      'json',
+		_ajax_nonce: nonce,
+	}, function ( resp ) {
+		if ( resp.success && resp.data.data ) {
+			var blob     = new Blob( [ resp.data.data ], { type: 'application/json' } );
+			var url      = URL.createObjectURL( blob );
+			var link     = document.createElement( 'a' );
+			link.href     = url;
+			link.download = resp.data.filename || 'tsh-wa-templates.json';
+			document.body.appendChild( link );
+			link.click();
+			document.body.removeChild( link );
+			URL.revokeObjectURL( url );
+		} else {
+			TshWaAdmin.showNotice( tshWaAdmin.i18n.error, 'error' );
+		}
+	} ).always( function () {
+		$btn.prop( 'disabled', false );
+	} );
+};
+
+// -------------------------------------------------------------------------
+// Template Preview Modal
+// -------------------------------------------------------------------------
+
+TshWaAdmin.initTemplatePreviewModal = function () {
+	$( document )
+		.on( 'click', '#tsh-wa-preview-modal-close, #tsh-wa-preview-modal-close-footer', function () {
+			TshWaAdmin.closePreviewModal();
+		} )
+		.on( 'click', '#tsh-wa-preview-modal-backdrop', function () {
+			TshWaAdmin.closePreviewModal();
+		} )
+		.on( 'keydown', function ( e ) {
+			if ( 27 === e.keyCode && $( '#tsh-wa-template-preview-modal' ).is( ':visible' ) ) {
+				TshWaAdmin.closePreviewModal();
+			}
+		} )
+		.on( 'click', '#tsh-wa-btn-refresh-preview', function () {
+			var id = $( '#tsh-wa-template-preview-modal' ).data( 'template-id' );
+			if ( id ) TshWaAdmin.loadPreviewData( id );
+		} );
+};
+
+TshWaAdmin.openPreviewModal = function ( templateId, templateName, scrollToAssign ) {
+	var $modal = $( '#tsh-wa-template-preview-modal' );
+	$modal.data( 'template-id', templateId ).fadeIn( 150 );
+	$( 'body' ).addClass( 'tsh-wa-modal-open' );
+
+	if ( templateName ) {
+		$( '#tsh-wa-preview-template-name' ).text( '— ' + templateName );
+	}
+
+	TshWaAdmin.loadPreviewData( templateId );
+
+	if ( scrollToAssign ) {
+		setTimeout( function () {
+			$( '#tsh-wa-assignment-panel' )[0].scrollIntoView( { behavior: 'smooth' } );
+		}, 400 );
+	}
+};
+
+TshWaAdmin.closePreviewModal = function () {
+	$( '#tsh-wa-template-preview-modal' ).fadeOut( 120 );
+	$( 'body' ).removeClass( 'tsh-wa-modal-open' );
+	$( '#tsh-wa-assignment-result' ).hide();
+};
+
+TshWaAdmin.loadPreviewData = function ( templateId ) {
+	var $modal   = $( '#tsh-wa-template-preview-modal' );
+	var $loading = $( '#tsh-wa-preview-loading' );
+	var $content = $( '#tsh-wa-preview-content' );
+	var $error   = $( '#tsh-wa-preview-error' );
+
+	// Collect current variable values.
+	var variables = {};
+	$modal.find( '.tsh-wa-variable-input' ).each( function () {
+		variables[ $( this ).data( 'var-num' ) ] = $( this ).val();
+	} );
+
+	$loading.show();
+	$content.hide();
+	$error.hide();
+
+	$.post( tshWaAdmin.ajaxUrl, {
+		action:      'tsh_wa_get_template_preview',
+		template_id: templateId,
+		variables:   variables,
+		_ajax_nonce: tshWaAdmin.nonce,
+	}, function ( resp ) {
+		$loading.hide();
+		if ( resp.success ) {
+			TshWaAdmin.renderPreviewData( resp.data );
+			$content.show();
+		} else {
+			$( '#tsh-wa-preview-error-msg' ).text( resp.data.message || tshWaAdmin.i18n.error );
+			$error.show();
+		}
+	} ).fail( function () {
+		$loading.hide();
+		$( '#tsh-wa-preview-error-msg' ).text( tshWaAdmin.i18n.error );
+		$error.show();
+	} );
+};
+
+TshWaAdmin.renderPreviewData = function ( data ) {
+	// Name.
+	$( '#tsh-wa-preview-template-name' ).text( '— ' + ( data.template_name || '' ) );
+
+	// Header.
+	var $headerArea = $( '#tsh-wa-preview-header-area' );
+	$headerArea.empty();
+	if ( data.header && data.header.type === 'TEXT' ) {
+		$headerArea.text( data.header.text || '' );
+	} else if ( data.header && data.header.type ) {
+		$headerArea.html( '<span class="tsh-wa-badge tsh-wa-badge--grey">[' + data.header.type + ']</span>' );
+	}
+
+	// Body.
+	$( '#tsh-wa-preview-body-text' ).text( data.body_rendered || data.body || '' );
+
+	// Footer.
+	var $footer = $( '#tsh-wa-preview-footer-text' );
+	data.footer ? $footer.text( data.footer ).show() : $footer.hide();
+
+	// Buttons.
+	var $btns = $( '#tsh-wa-preview-buttons-area' ).empty();
+	if ( data.buttons && data.buttons.length ) {
+		$.each( data.buttons, function ( i, btn ) {
+			var cls = 'tsh-wa-preview-button';
+			if ( 'URL' === btn.type )          cls += ' tsh-wa-preview-button--url';
+			if ( 'PHONE_NUMBER' === btn.type )  cls += ' tsh-wa-preview-button--phone';
+			if ( 'COPY_CODE' === btn.type )     cls += ' tsh-wa-preview-button--copy';
+			$btns.append( '<div class="' + cls + '">' + $( '<span>' ).text( btn.text || btn.type ).html() + '</div>' );
+		} );
+	}
+
+	// Meta.
+	$( '#tsh-wa-meta-category' ).text( data.category || '—' );
+	$( '#tsh-wa-meta-language' ).text( data.language  || '—' );
+	$( '#tsh-wa-meta-status' ).text( data.status       || '—' );
+	$( '#tsh-wa-meta-quality' ).text( data.quality_score || '—' );
+	$( '#tsh-wa-meta-usage' ).text( ( data.usage_count || 0 ).toLocaleString() );
+	$( '#tsh-wa-meta-chars' ).text( ( data.char_count  || 0 ).toLocaleString() );
+
+	// Variable inspector.
+	var $inspector = $( '#tsh-wa-variable-inspector-body' ).empty();
+	if ( data.variable_map && data.variable_map.length ) {
+		$.each( data.variable_map, function ( i, v ) {
+			var $row = $( '<div class="tsh-wa-variable-row"></div>' );
+			$row.append( '<div class="tsh-wa-variable-row__label">{{' + v.number + '}}</div>' );
+			var $input = $( '<input type="text" class="tsh-wa-variable-input tsh-wa-variable-row__input" />' )
+				.attr( 'data-var-num', v.number )
+				.attr( 'placeholder', v.example || '' )
+				.val( v.value || '' );
+			$row.append( $input );
+			if ( v.wc_field ) {
+				$row.append( '<div class="tsh-wa-variable-row__wc-field">WC: ' + v.wc_field + '</div>' );
+			}
+			$inspector.append( $row );
+		} );
+		// Live refresh on variable input.
+		$inspector.find( '.tsh-wa-variable-input' ).on( 'input', TshWaAdmin.debounce( function () {
+			TshWaAdmin.loadPreviewData( $( '#tsh-wa-template-preview-modal' ).data( 'template-id' ) );
+		}, 600 ) );
+	} else {
+		$inspector.html( '<p class="tsh-wa-text--muted tsh-wa-text--small">' + ( tshWaAdmin.i18n.no_variables || 'No variables.' ) + '</p>' );
+	}
+};
+
+// -------------------------------------------------------------------------
+// Template Assignment Module
+// -------------------------------------------------------------------------
+
+TshWaAdmin.initTemplateAssignment = function () {
+	if ( ! document.getElementById( 'tsh-wa-btn-save-assignment' ) ) return;
+
+	$( '#tsh-wa-btn-save-assignment' ).on( 'click', function () {
+		var templateId     = $( '#tsh-wa-template-preview-modal' ).data( 'template-id' );
+		var event          = $( '#tsh-wa-assign-event' ).val();
+		var recipientType  = $( 'input[name="tsh_wa_recipient_type"]:checked' ).val() || 'customer';
+		var nonce          = $( this ).data( 'nonce' ) || tshWaAdmin.nonce;
+		var $result        = $( '#tsh-wa-assignment-result' );
+
+		if ( ! event ) {
+			TshWaAdmin.showAssignmentResult( tshWaAdmin.i18n.select_event || 'Select an event.', 'error' );
+			return;
+		}
+
+		var $btn = $( this ).prop( 'disabled', true );
+
+		$.post( tshWaAdmin.ajaxUrl, {
+			action:         'tsh_wa_assign_template',
+			template_id:    templateId,
+			event:          event,
+			recipient_type: recipientType,
+			_ajax_nonce:    nonce,
+		}, function ( resp ) {
+			var msg = resp.success
+				? ( resp.data.message || tshWaAdmin.i18n.template_assigned )
+				: ( resp.data.message || tshWaAdmin.i18n.error );
+			TshWaAdmin.showAssignmentResult( msg, resp.success ? 'success' : 'error' );
+			if ( resp.success ) {
+				$( '#tsh-wa-btn-remove-assignment' ).show();
+			}
+		} ).always( function () {
+			$btn.prop( 'disabled', false );
+		} );
+	} );
+
+	$( '#tsh-wa-btn-remove-assignment' ).on( 'click', function () {
+		var event         = $( '#tsh-wa-assign-event' ).val();
+		var recipientType = $( 'input[name="tsh_wa_recipient_type"]:checked' ).val() || 'customer';
+		var nonce         = $( this ).data( 'nonce' ) || tshWaAdmin.nonce;
+
+		$.post( tshWaAdmin.ajaxUrl, {
+			action:         'tsh_wa_unassign_template',
+			event:          event,
+			recipient_type: recipientType,
+			_ajax_nonce:    nonce,
+		}, function ( resp ) {
+			var msg = resp.success
+				? ( resp.data.message || tshWaAdmin.i18n.template_unassigned )
+				: ( resp.data.message || tshWaAdmin.i18n.error );
+			TshWaAdmin.showAssignmentResult( msg, resp.success ? 'success' : 'error' );
+			if ( resp.success ) {
+				$( '#tsh-wa-btn-remove-assignment' ).hide();
+			}
+		} );
+	} );
+};
+
+TshWaAdmin.showAssignmentResult = function ( msg, type ) {
+	var $el = $( '#tsh-wa-assignment-result' );
+	$el.text( msg )
+		.removeClass( 'tsh-wa-inline-notice--success tsh-wa-inline-notice--error tsh-wa-inline-notice--warning' )
+		.addClass( 'tsh-wa-inline-notice tsh-wa-inline-notice--' + type )
+		.show();
+};
+
+// -------------------------------------------------------------------------
+// Template Search Module
+// -------------------------------------------------------------------------
+
+TshWaAdmin.initTemplateSearch = function () {
+	var $searchInput = $( '#tsh-wa-template-search' );
+	if ( ! $searchInput.length ) return;
+
+	$searchInput.on( 'input', TshWaAdmin.debounce( function () {
+		$searchInput.closest( 'form' ).submit();
+	}, 600 ) );
+};
+
+// -------------------------------------------------------------------------
+// Import Modal
+// -------------------------------------------------------------------------
+
+TshWaAdmin.initTemplateImportModal = function () {
+	if ( ! document.getElementById( 'tsh-wa-import-modal' ) ) return;
+
+	$( document )
+		.on( 'click', '#tsh-wa-import-modal-close, #tsh-wa-import-modal-close-footer', function () {
+			$( '#tsh-wa-import-modal' ).fadeOut( 120 );
+		} )
+		.on( 'click', '#tsh-wa-import-modal-backdrop', function () {
+			$( '#tsh-wa-import-modal' ).fadeOut( 120 );
+		} );
+};
+
+TshWaAdmin.openImportModal = function () {
+	$( '#tsh-wa-import-result' ).hide();
+	$( '#tsh-wa-import-data' ).val( '' );
+	$( '#tsh-wa-import-modal' ).fadeIn( 150 );
+};
+
+$( document ).on( 'click', '#tsh-wa-btn-run-import', function () {
+	var nonce  = $( this ).data( 'nonce' ) || tshWaAdmin.nonce;
+	var format = $( '#tsh-wa-import-format' ).val();
+	var mode   = $( '#tsh-wa-import-mode' ).val();
+	var data   = $( '#tsh-wa-import-data' ).val();
+	var $btn   = $( this ).prop( 'disabled', true );
+
+	if ( ! data.trim() ) {
+		TshWaAdmin.showInlineNotice( '#tsh-wa-import-result', 'Please paste your import data.', 'error' );
+		$btn.prop( 'disabled', false );
+		return;
+	}
+
+	$.post( tshWaAdmin.ajaxUrl, {
+		action:      'tsh_wa_import_templates',
+		format:      format,
+		mode:        mode,
+		data:        data,
+		_ajax_nonce: nonce,
+	}, function ( resp ) {
+		if ( resp.success ) {
+			var stats = resp.data;
+			var msg   = 'Imported: ' + stats.imported + ' | Skipped: ' + stats.skipped + ' | Errors: ' + stats.errors;
+			TshWaAdmin.showInlineNotice( '#tsh-wa-import-result', msg, 'success' );
+			setTimeout( function () { window.location.reload(); }, 1500 );
+		} else {
+			var errMsg = resp.data.messages ? resp.data.messages.join( ' ' ) : tshWaAdmin.i18n.error;
+			TshWaAdmin.showInlineNotice( '#tsh-wa-import-result', errMsg, 'error' );
+		}
+	} ).always( function () {
+		$btn.prop( 'disabled', false );
+	} );
+} );
+
+TshWaAdmin.showInlineNotice = function ( selector, msg, type ) {
+	var $el = $( selector );
+	$el.text( msg )
+		.removeClass( 'tsh-wa-inline-notice--success tsh-wa-inline-notice--error tsh-wa-inline-notice--warning' )
+		.addClass( 'tsh-wa-inline-notice tsh-wa-inline-notice--' + type )
+		.show();
+};
+
+// -------------------------------------------------------------------------
+// Analytics Module (lightweight stats refresh)
+// -------------------------------------------------------------------------
+
+TshWaAdmin.initTemplateAnalytics = function () {
+	// Nothing to do on page load — stats are server-rendered.
+	// AJAX refresh happens when tsh_wa_sync_templates reloads the page.
+};
+
+// -------------------------------------------------------------------------
+// Utility: debounce
+// -------------------------------------------------------------------------
+
+TshWaAdmin.debounce = function ( fn, wait ) {
+	var timer;
+	return function () {
+		var args = arguments;
+		clearTimeout( timer );
+		timer = setTimeout( function () { fn.apply( this, args ); }, wait );
+	};
+};
+
+// -------------------------------------------------------------------------
+// Utility: show admin notice bar
+// -------------------------------------------------------------------------
+
+TshWaAdmin.showNotice = function ( message, type ) {
+	var $notice = $( '#tsh-wa-page-notice' );
+	if ( ! $notice.length ) {
+		$notice = $( '<div id="tsh-wa-page-notice" class="notice is-dismissible"></div>' );
+		$( '.wrap h1' ).first().after( $notice );
+	}
+	$notice
+		.removeClass( 'notice-success notice-error notice-warning notice-info' )
+		.addClass( 'notice-' + ( type === 'success' ? 'success' : ( type === 'error' ? 'error' : 'warning' ) ) )
+		.html( '<p>' + $( '<span>' ).text( message ).html() + '</p>' )
+		.show();
+
+	setTimeout( function () { $notice.fadeOut( 400 ); }, 5000 );
+};
+
+// -------------------------------------------------------------------------
+// Bootstrap: add Phase 5 modules to init()
+// -------------------------------------------------------------------------
+
+$( function () {
+	TshWaAdmin.initTemplateManager();
+	TshWaAdmin.initTemplatePreviewModal();
+	TshWaAdmin.initTemplateAssignment();
+	TshWaAdmin.initTemplateSearch();
+	TshWaAdmin.initTemplateImportModal();
+	TshWaAdmin.initTemplateAnalytics();
+} );
