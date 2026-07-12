@@ -187,6 +187,19 @@ final class Activator {
 
 		$defaults['tsh_wa_admin_recipients'] = [];
 
+		// Phase 6 — Inbox / Conversation Hub settings.
+		$defaults['tsh_wa_inbox_settings'] = [
+			'auto_download_media'   => '1',
+			'media_retention_days'  => '90',
+			'polling_interval'      => '15',
+			'async_webhook'         => '0',
+			'auto_assign_enabled'   => '0',
+			'auto_assign_user_id'   => '',
+			'auto_archive_days'     => '30',
+			'max_download_size_mb'  => '25',
+			'custom_labels'         => [],
+		];
+
 		foreach ( $defaults as $option_name => $option_value ) {
 			if ( false === get_option( $option_name ) ) {
 				add_option( $option_name, $option_value, '', 'no' );

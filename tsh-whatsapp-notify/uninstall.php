@@ -40,6 +40,8 @@ $tables = [
 	$wpdb->prefix . 'tsh_wa_worker_log',           // Phase 4
 	$wpdb->prefix . 'tsh_wa_template_assignments', // Phase 5
 	$wpdb->prefix . 'tsh_wa_meta_templates',       // Phase 5
+	$wpdb->prefix . 'tsh_wa_messages',             // Phase 6
+	$wpdb->prefix . 'tsh_wa_conversations',        // Phase 6
 ];
 
 foreach ( $tables as $table ) {
@@ -78,6 +80,9 @@ $options = [
 	'tsh_wa_template_sync_status',       // TemplateSync::OPTION_SYNC_STATUS
 	'tsh_wa_template_sync_last_error',   // TemplateSync::OPTION_LAST_ERROR
 	'tsh_wa_tmpl_cache_keys',            // TemplateCache::REGISTRY_OPTION
+	// Phase 6 — Inbox / Conversation Hub.
+	'tsh_wa_inbox_settings',             // InboxManager settings
+	'tsh_wa_inbox_cache_keys',           // ConversationCache::REGISTRY_OPTION
 ];
 
 foreach ( $options as $option ) {
@@ -99,6 +104,30 @@ $like_pattern = $wpdb->esc_like( '_transient_tsh_wa_tmpl_' ) . '%';
 // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared
 $wpdb->query( $wpdb->prepare( "DELETE FROM `{$wpdb->options}` WHERE option_name LIKE %s", $like_pattern ) );
 
+// Phase 6 — bulk-delete all inbox cache transients by prefix.
+$inbox_pattern = $wpdb->esc_like( '_transient_tsh_wa_inbox_' ) . '%';
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared
+$wpdb->query( $wpdb->prepare( "DELETE FROM `{$wpdb->options}` WHERE option_name LIKE %s", $inbox_pattern ) );
+
+// Phase 6 — delete any downloaded media files from WP uploads.
+$upload_dir  = wp_upload_dir();
+$inbox_media = trailingslashit( $upload_dir['basedir'] ) . 'tsh-wa-inbox/';
+if ( is_dir( $inbox_media ) ) {
+	// Recursively remove directory tree.
+	$iter = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator( $inbox_media, FilesystemIterator::SKIP_DOTS ),
+		RecursiveIteratorIterator::CHILD_FIRST
+	);
+	foreach ( $iter as $entry ) {
+		if ( $entry->isFile() ) {
+			wp_delete_file( $entry->getPathname() );
+		} elseif ( $entry->isDir() ) {
+			@rmdir( $entry->getPathname() ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		}
+	}
+	@rmdir( $inbox_media ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+}
+
 foreach ( $transients as $transient ) {
 	delete_transient( $transient );
 }
@@ -117,6 +146,8 @@ $cron_hooks = [
 	'tsh_wa_sync_templates',               // Phase 5 — hourly template sync.
 	'tsh_wa_refresh_template_quality',     // Phase 5 — daily quality refresh.
 	'tsh_wa_background_template_sync',     // Phase 5 — one-shot background sync.
+	'tsh_wa_download_media',               // Phase 6 — media downloader cron.
+	'tsh_wa_archive_conversations',        // Phase 6 — auto-archive stale conversations.
 ];
 
 foreach ( $cron_hooks as $hook ) {

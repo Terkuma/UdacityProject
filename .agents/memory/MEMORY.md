@@ -1,3 +1,4 @@
 - [TSH WA Plugin Foundation](tsh-wa-plugin.md) — Phase 1 WordPress/WooCommerce plugin at tsh-whatsapp-notify/; PSR-4 namespace TSH\WhatsAppNotify\, PHP 8.1+, no Composer vendor dir yet.
 - [TSH WA Phase 2 — API Layer](tsh-wa-phase2.md) — WhatsApp Cloud API engine complete; all files written; Phase 3 (WooCommerce order hooks) is next and must NOT start automatically.
 - [TSH WA Phase 5 — Meta Template Management](tsh-wa-phase5.md) — 16 Template classes, 2 new DB tables (5.0.0), 15 AJAX handlers, full Templates page + modal, CSS+JS; Phases 1–5 complete.
+- [TSH WA Phase 6 — Inbox / Conversation Hub](tsh-wa-phase6.md) — 17 Inbox classes, 2 new DB tables (6.0.0), 17 AJAX handlers, WhatsApp-style chat UI, webhook receiver, media downloader; Phases 1–6 complete.

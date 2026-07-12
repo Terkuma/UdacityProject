@@ -22,6 +22,7 @@ use TSH\WhatsAppNotify\Database\Installer;
 use TSH\WhatsAppNotify\Orders\OrderListener;
 use TSH\WhatsAppNotify\Orders\OrderStatusListener;
 use TSH\WhatsAppNotify\Queue\QueueProcessor;
+use TSH\WhatsAppNotify\Inbox\InboxManager;
 use TSH\WhatsAppNotify\Templates\TemplateManager;
 use TSH\WhatsAppNotify\Templates\TemplateSync;
 
@@ -128,6 +129,10 @@ final class Loader {
 		// Phase 5: Template sync — ensure the scheduled and background cron hooks are registered.
 		add_action( Scheduler::HOOK_SYNC_TEMPLATES,           [ new TemplateSync(), 'scheduled_sync' ] );
 		add_action( Scheduler::HOOK_REFRESH_TEMPLATE_QUALITY, [ new TemplateSync(), 'manual_sync'    ] );
+
+		// Phase 6: Inbox / Conversation hub — webhook receiver + media downloader.
+		$this->components['inbox_manager'] = new InboxManager();
+		$this->components['inbox_manager']->register_hooks();
 
 		// Admin-only components — never loaded on the frontend.
 		if ( is_admin() ) {

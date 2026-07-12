@@ -19,6 +19,7 @@ use TSH\WhatsAppNotify\Admin\Pages\Queue;
 use TSH\WhatsAppNotify\Admin\Pages\Logs;
 use TSH\WhatsAppNotify\Admin\Pages\Tools;
 use TSH\WhatsAppNotify\Admin\Pages\About;
+use TSH\WhatsAppNotify\Admin\Pages\Inbox;
 
 /**
  * Class Menu
@@ -51,6 +52,7 @@ final class Menu {
 	public const SLUG_SETTINGS   = 'tsh-whatsapp-notify-settings';
 	public const SLUG_TOOLS      = 'tsh-whatsapp-notify-tools';
 	public const SLUG_ABOUT      = 'tsh-whatsapp-notify-about';
+	public const SLUG_INBOX      = 'tsh-whatsapp-notify-inbox';
 
 	/** @var Dashboard */
 	private Dashboard $dashboard;
@@ -76,6 +78,9 @@ final class Menu {
 	/** @var About */
 	private About $about;
 
+	/** @var Inbox */
+	private Inbox $inbox;
+
 	/**
 	 * Constructor — registers menu hooks.
 	 */
@@ -88,6 +93,7 @@ final class Menu {
 		$this->logs      = new Logs();
 		$this->tools     = new Tools();
 		$this->about     = new About();
+		$this->inbox     = new Inbox();
 
 		add_action( 'admin_menu', [ $this, 'register_menus' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
@@ -190,6 +196,16 @@ final class Menu {
 			self::SLUG_ABOUT,
 			[ $this->about, 'render' ]
 		);
+
+		// Inbox (Phase 6).
+		add_submenu_page(
+			self::SLUG_DASHBOARD,
+			__( 'Inbox — TSH WhatsApp Notify', 'tsh-whatsapp-notify' ),
+			__( 'Inbox', 'tsh-whatsapp-notify' ),
+			'manage_woocommerce',
+			self::SLUG_INBOX,
+			[ $this->inbox, 'render' ]
+		);
 	}
 
 	// -------------------------------------------------------------------------
@@ -249,6 +265,13 @@ final class Menu {
 					'api_version'            => __( 'API Version', 'tsh-whatsapp-notify' ),
 					'latency'                => __( 'Latency', 'tsh-whatsapp-notify' ),
 					'show_password'          => __( 'Show / hide', 'tsh-whatsapp-notify' ),
+					// Phase 6 — Inbox.
+					'inbox_sending'          => __( 'Sending…', 'tsh-whatsapp-notify' ),
+					'inbox_send'             => __( 'Send', 'tsh-whatsapp-notify' ),
+					'inbox_note_added'       => __( 'Note added.', 'tsh-whatsapp-notify' ),
+					'inbox_assigned'         => __( 'Assigned.', 'tsh-whatsapp-notify' ),
+					'inbox_status_updated'   => __( 'Status updated.', 'tsh-whatsapp-notify' ),
+					'inbox_confirm_rebuild'  => __( 'This will permanently delete ALL conversation data. Continue?', 'tsh-whatsapp-notify' ),
 					// Phase 5 — Template manager.
 					'syncing'                => __( 'Syncing…', 'tsh-whatsapp-notify' ),
 					'sync_complete'          => __( 'Sync complete.', 'tsh-whatsapp-notify' ),

@@ -1617,3 +1617,713 @@ $( function () {
 	TshWaAdmin.initTemplateImportModal();
 	TshWaAdmin.initTemplateAnalytics();
 } );
+
+/* ===========================================================================
+   Phase 6 — Inbox / Conversation Hub
+   =========================================================================== */
+
+// ---------------------------------------------------------------------------
+// Namespace extension
+// ---------------------------------------------------------------------------
+
+TshWaAdmin.inbox = (function ( $ ) {
+	'use strict';
+
+	// Guard: only run when inbox data is present.
+	if ( typeof tshWaInbox === 'undefined' ) {
+		return {};
+	}
+
+	var cfg            = tshWaInbox;
+	var ajaxUrl        = cfg.ajaxUrl;
+	var nonce          = cfg.nonce;
+	var i18n           = cfg.i18n;
+	var pollTimer      = null;
+	var polledAt       = null;
+
+	// Current state.
+	var state = {
+		activeConvId   : null,
+		activePhone    : null,
+		currentStatus  : 'open',
+		composerMode   : 'reply',
+		messagePage    : 1,
+		hasOlderMsgs   : false,
+		convPage       : 1,
+		searchTimer    : null,
+	};
+
+	// ---------------------------------------------------------------------------
+	// Helpers
+	// ---------------------------------------------------------------------------
+
+	function ajaxPost( action, data, done, fail ) {
+		var payload = $.extend( { action: action, _ajax_nonce: nonce }, data );
+		$.post( ajaxUrl, payload )
+			.done( function ( res ) {
+				if ( res.success ) {
+					if ( typeof done === 'function' ) { done( res.data ); }
+				} else {
+					var msg = ( res.data && res.data.message ) ? res.data.message : i18n.error;
+					if ( typeof fail === 'function' ) { fail( msg ); } else { showToast( msg, 'error' ); }
+				}
+			} )
+			.fail( function () {
+				if ( typeof fail === 'function' ) { fail( i18n.error ); } else { showToast( i18n.error, 'error' ); }
+			} );
+	}
+
+	function showToast( message, type ) {
+		var cls   = 'tsh-wa-inbox-toast' + ( type ? ' tsh-wa-inbox-toast--' + type : '' );
+		var $t    = $( '<div class="' + cls + '">' ).text( message );
+		$( 'body' ).append( $t );
+		setTimeout( function () { $t.fadeOut( 300, function () { $( this ).remove(); } ); }, 3000 );
+	}
+
+	function escHtml( str ) {
+		if ( ! str ) { return ''; }
+		return String( str )
+			.replace( /&/g, '&amp;' )
+			.replace( /</g, '&lt;' )
+			.replace( />/g, '&gt;' )
+			.replace( /"/g, '&quot;' );
+	}
+
+	function formatTime( iso ) {
+		if ( ! iso ) { return ''; }
+		var d = new Date( iso );
+		if ( isNaN( d ) ) { return iso; }
+		return d.toLocaleTimeString( [], { hour: '2-digit', minute: '2-digit' } );
+	}
+
+	function statusIcon( status ) {
+		var icons = { queued: '○', sending: '◌', sent: '✓', delivered: '✓✓', read: '✓✓', failed: '✗', retrying: '↺' };
+		return icons[ status ] || '';
+	}
+
+	// ---------------------------------------------------------------------------
+	// Conversation list rendering
+	// ---------------------------------------------------------------------------
+
+	function renderConvItem( conv ) {
+		var unreadDot = ( conv.unread_count > 0 )
+			? '<span class="tsh-wa-conv-item__unread-dot">' + escHtml( conv.unread_count ) + '</span>'
+			: '';
+
+		var labels = '';
+		if ( conv.labels && conv.labels.length ) {
+			labels = '<div class="tsh-wa-conv-item__labels">';
+			$.each( conv.labels, function ( i, l ) {
+				labels += '<span class="tsh-wa-label tsh-wa-label--' + escHtml( l ) + '">' + escHtml( l ) + '</span>';
+			} );
+			labels += '</div>';
+		}
+
+		var pin = conv.is_pinned
+			? '<span class="tsh-wa-conv-item__pin dashicons dashicons-sticky"></span>'
+			: '';
+
+		var cls = 'tsh-wa-conv-item';
+		if ( conv.is_pinned )     { cls += ' tsh-wa-conv-item--pinned'; }
+		if ( conv.unread_count > 0 ) { cls += ' tsh-wa-conv-item--unread'; }
+		if ( parseInt( conv.id ) === parseInt( state.activeConvId ) ) { cls += ' tsh-wa-conv-item--active'; }
+
+		return '<div class="' + cls + '" data-id="' + escHtml( conv.id ) + '" data-phone="' + escHtml( conv.phone ) + '">' +
+			'<div class="tsh-wa-conv-item__avatar">' +
+				'<img src="' + escHtml( conv.avatar_url ) + '" alt="" class="tsh-wa-conv-item__avatar-img" />' +
+				unreadDot +
+			'</div>' +
+			'<div class="tsh-wa-conv-item__body">' +
+				'<div class="tsh-wa-conv-item__header">' +
+					'<span class="tsh-wa-conv-item__name">' + escHtml( conv.display_name ) + '</span>' +
+					'<span class="tsh-wa-conv-item__time">' + escHtml( conv.last_message_human ) + '</span>' +
+				'</div>' +
+				'<div class="tsh-wa-conv-item__preview">' +
+					'<span class="tsh-wa-conv-item__text">' + escHtml( conv.last_message_text ) + '</span>' +
+				'</div>' +
+				labels +
+			'</div>' +
+			pin +
+		'</div>';
+	}
+
+	function loadConversations( page, append ) {
+		page = page || 1;
+		ajaxPost( 'tsh_wa_inbox_get_conversations', {
+			status   : state.currentStatus,
+			page     : page,
+		}, function ( data ) {
+			var items = data.conversations || [];
+			var html  = '';
+			$.each( items, function ( i, c ) { html += renderConvItem( c ); } );
+
+			if ( append ) {
+				$( '#tsh-wa-conv-items' ).append( html );
+			} else {
+				if ( ! items.length ) {
+					html = '<div class="tsh-wa-inbox-empty-state">' +
+						'<span class="dashicons dashicons-format-chat tsh-wa-inbox-empty-icon"></span>' +
+						'<p>' + escHtml( i18n.no_conversations ) + '</p></div>';
+					$( '#tsh-wa-inbox-conv-list' ).html( html );
+					return;
+				}
+				$( '#tsh-wa-inbox-conv-list' ).html( '<div id="tsh-wa-conv-items">' + html + '</div>' );
+			}
+
+			// Show/hide load more.
+			if ( data.total > page * 30 ) {
+				var $lm = $( '#tsh-wa-load-more-convs' );
+				if ( ! $lm.length ) {
+					$( '#tsh-wa-inbox-conv-list' ).append(
+						'<div class="tsh-wa-inbox-load-more"><button type="button" class="button" id="tsh-wa-load-more-convs" data-page="' + ( page + 1 ) + '">' + escHtml( i18n.load_older ) + '</button></div>'
+					);
+				} else {
+					$lm.data( 'page', page + 1 );
+				}
+			} else {
+				$( '#tsh-wa-load-more-convs' ).closest( '.tsh-wa-inbox-load-more' ).remove();
+			}
+
+			// Update tab badge.
+			$( '#tsh-wa-tab-badge-open' ).text( data.total || '' );
+		} );
+	}
+
+	// ---------------------------------------------------------------------------
+	// Open a conversation / load messages
+	// ---------------------------------------------------------------------------
+
+	function openConversation( id ) {
+		state.activeConvId  = id;
+		state.messagePage   = 1;
+		state.hasOlderMsgs  = false;
+
+		// Mark active in list.
+		$( '.tsh-wa-conv-item' ).removeClass( 'tsh-wa-conv-item--active' );
+		$( '.tsh-wa-conv-item[data-id="' + id + '"]' ).addClass( 'tsh-wa-conv-item--active' );
+
+		// Show chat window.
+		$( '#tsh-wa-chat-empty' ).hide();
+		$( '#tsh-wa-chat-window' ).show();
+		$( '#tsh-wa-customer-sidebar' ).show();
+
+		// Show loading.
+		$( '#tsh-wa-messages-container' ).empty();
+		$( '#tsh-wa-chat-loading' ).show();
+
+		ajaxPost( 'tsh_wa_inbox_get_conversation', { conversation_id: id, limit: 50 }, function ( data ) {
+			$( '#tsh-wa-chat-loading' ).hide();
+			renderMessages( data.messages || [], false );
+
+			// Update header.
+			var conv = data.conversation;
+			if ( conv ) {
+				$( '#tsh-wa-chat-avatar' ).attr( 'src', conv.avatar_url || '' );
+				$( '#tsh-wa-chat-name' ).text( conv.display_name || '' );
+				$( '#tsh-wa-chat-phone' ).text( conv.phone || '' );
+				$( '#tsh-wa-chat-status' ).val( conv.status || 'open' );
+				$( '#tsh-wa-chat-assign' ).val( conv.assigned_to || '' );
+				state.activePhone = conv.phone;
+
+				// Update pin button.
+				$( '#tsh-wa-chat-pin' ).toggleClass( 'tsh-wa-btn-active', !! conv.is_pinned );
+
+				// Update label checkboxes.
+				var convLabels = conv.labels || [];
+				$( '.tsh-wa-label-toggle' ).prop( 'checked', false );
+				$.each( convLabels, function ( i, l ) {
+					$( '.tsh-wa-label-toggle[value="' + l + '"]' ).prop( 'checked', true );
+				} );
+			}
+
+			// Load older button.
+			if ( data.has_older ) {
+				$( '#tsh-wa-load-older-wrap' ).show();
+				state.hasOlderMsgs = true;
+			} else {
+				$( '#tsh-wa-load-older-wrap' ).hide();
+			}
+
+			// Load customer profile.
+			loadCustomerProfile( id );
+
+			// Scroll to bottom.
+			scrollToBottom();
+		} );
+	}
+
+	// ---------------------------------------------------------------------------
+	// Message rendering
+	// ---------------------------------------------------------------------------
+
+	function renderMessages( messages, prepend ) {
+		var html = '';
+		var lastDate = null;
+
+		$.each( messages, function ( i, msg ) {
+			// Date separator.
+			var msgDate = msg.timestamp ? msg.timestamp.substring( 0, 10 ) : null;
+			if ( msgDate && msgDate !== lastDate ) {
+				var dateLabel = formatDateLabel( msgDate );
+				html += '<div class="tsh-wa-date-separator"><span class="tsh-wa-date-separator__label">' + escHtml( dateLabel ) + '</span></div>';
+				lastDate = msgDate;
+			}
+			html += renderMessage( msg );
+		} );
+
+		if ( prepend ) {
+			$( '#tsh-wa-messages-container' ).prepend( html );
+		} else {
+			$( '#tsh-wa-messages-container' ).html( html );
+		}
+	}
+
+	function renderMessage( msg ) {
+		var isOutgoing = msg.direction === 'outgoing';
+		var isNote     = !! msg.is_note;
+		var dirClass   = isNote ? 'note' : ( isOutgoing ? 'outgoing' : 'incoming' );
+
+		var noteTag = isNote
+			? '<span class="tsh-wa-msg__note-tag"><span class="dashicons dashicons-edit"></span> Internal Note</span>'
+			: '';
+
+		var media = '';
+		if ( msg.media_url ) {
+			media = '<div class="tsh-wa-msg__media"><a href="' + escHtml( msg.media_url ) + '" target="_blank" class="tsh-wa-msg__media-link"><span class="dashicons dashicons-download"></span> View</a></div>';
+		} else if ( msg.has_media ) {
+			media = '<div class="tsh-wa-msg__media"><button type="button" class="tsh-wa-msg__download-btn" data-msg-id="' + escHtml( msg.id ) + '"><span class="dashicons dashicons-download"></span> Download</button></div>';
+		}
+
+		var statusHtml = '';
+		if ( isOutgoing && ! isNote ) {
+			var icon = statusIcon( msg.status );
+			var statusCls = 'tsh-wa-msg__status tsh-wa-msg__status--' + escHtml( msg.status );
+			statusHtml = '<span class="' + statusCls + '" title="' + escHtml( msg.status ) + '">' + icon + '</span>';
+		}
+
+		return '<div class="tsh-wa-msg tsh-wa-msg--' + dirClass + '" data-id="' + escHtml( msg.id ) + '">' +
+			'<div class="tsh-wa-msg__bubble' + ( isNote ? ' tsh-wa-msg__bubble--note' : '' ) + '">' +
+				noteTag +
+				'<div class="tsh-wa-msg__content">' + escHtml( msg.content || '' ) + '</div>' +
+				media +
+				'<div class="tsh-wa-msg__meta">' +
+					'<span class="tsh-wa-msg__time">' + escHtml( msg.time_human || formatTime( msg.timestamp ) ) + '</span>' +
+					statusHtml +
+				'</div>' +
+			'</div>' +
+		'</div>';
+	}
+
+	function formatDateLabel( dateStr ) {
+		var today = new Date();
+		var todayStr = today.toISOString().substring( 0, 10 );
+		var yesterday = new Date( today );
+		yesterday.setDate( today.getDate() - 1 );
+		var yesterdayStr = yesterday.toISOString().substring( 0, 10 );
+
+		if ( dateStr === todayStr ) { return i18n.today; }
+		if ( dateStr === yesterdayStr ) { return i18n.yesterday; }
+		return dateStr;
+	}
+
+	function scrollToBottom() {
+		var $msgs = $( '#tsh-wa-chat-messages' );
+		$msgs.scrollTop( $msgs[ 0 ].scrollHeight );
+	}
+
+	// ---------------------------------------------------------------------------
+	// Send reply / note
+	// ---------------------------------------------------------------------------
+
+	function sendMessage() {
+		var $btn  = $( '#tsh-wa-send-btn' );
+		var text  = $( '#tsh-wa-composer-text' ).val().trim();
+		if ( ! text || ! state.activeConvId ) { return; }
+
+		$btn.prop( 'disabled', true );
+		$( '#tsh-wa-send-label' ).text( i18n.sending );
+
+		var action = ( state.composerMode === 'note' )
+			? 'tsh_wa_inbox_add_note'
+			: 'tsh_wa_inbox_send_reply';
+		var dataKey = ( state.composerMode === 'note' ) ? 'note' : 'message';
+		var payload = { conversation_id: state.activeConvId };
+		payload[ dataKey ] = text;
+
+		ajaxPost( action, payload, function ( data ) {
+			$( '#tsh-wa-composer-text' ).val( '' );
+			$( '#tsh-wa-char-count' ).text( '0 / 4096' );
+			$btn.prop( 'disabled', false );
+			$( '#tsh-wa-send-label' ).text( state.composerMode === 'note' ? i18n.add_note : i18n.send );
+
+			// Append new message to UI.
+			if ( data.message ) {
+				$( '#tsh-wa-messages-container' ).append( renderMessage( data.message ) );
+				scrollToBottom();
+			}
+			showToast( state.composerMode === 'note' ? i18n.note_added : i18n.message_sent, 'success' );
+
+			// Refresh conversation in list.
+			refreshConvItem( state.activeConvId );
+		}, function ( err ) {
+			$btn.prop( 'disabled', false );
+			$( '#tsh-wa-send-label' ).text( state.composerMode === 'note' ? i18n.add_note : i18n.send );
+			showToast( err, 'error' );
+		} );
+	}
+
+	// ---------------------------------------------------------------------------
+	// Customer profile panel
+	// ---------------------------------------------------------------------------
+
+	function loadCustomerProfile( convId ) {
+		ajaxPost( 'tsh_wa_inbox_get_customer_profile', { conversation_id: convId }, function ( data ) {
+			$( '#tsh-wa-customer-avatar' ).attr( 'src', data.avatar_url || '' );
+			$( '#tsh-wa-customer-name' ).text( data.display_name || data.phone || '' );
+			$( '#tsh-wa-customer-phone' ).text( data.phone || '' );
+			$( '#tsh-wa-customer-email' ).text( data.email || '' );
+
+			if ( data.edit_url ) {
+				$( '#tsh-wa-customer-edit-link' ).attr( 'href', data.edit_url ).show();
+			} else {
+				$( '#tsh-wa-customer-edit-link' ).hide();
+			}
+
+			$( '#tsh-wa-cust-orders' ).text( data.order_count || 0 );
+			$( '#tsh-wa-cust-value' ).text( data.lifetime_value || '—' );
+
+			// Orders list.
+			var $ol = $( '#tsh-wa-customer-orders-list' ).empty();
+			var orders = data.orders || [];
+			if ( ! orders.length ) {
+				$ol.html( '<p class="tsh-wa-customer-orders-empty">No orders found.</p>' );
+			} else {
+				$.each( orders, function ( i, o ) {
+					$ol.append(
+						'<div class="tsh-wa-order-card">' +
+							'<div class="tsh-wa-order-card__header">' +
+								'<a href="' + escHtml( o.edit_url ) + '" target="_blank" class="tsh-wa-order-card__number">#' + escHtml( o.number ) + '</a>' +
+								'<span class="tsh-wa-order-card__status tsh-wa-order-status--' + escHtml( o.status ) + '">' + escHtml( o.status_label ) + '</span>' +
+							'</div>' +
+							'<div class="tsh-wa-order-card__meta">' +
+								'<span>' + escHtml( o.total ) + '</span>' +
+								'<span>' + escHtml( o.date_human ) + '</span>' +
+							'</div>' +
+						'</div>'
+					);
+				} );
+			}
+		} );
+	}
+
+	// ---------------------------------------------------------------------------
+	// Polling
+	// ---------------------------------------------------------------------------
+
+	function startPolling() {
+		stopPolling();
+		polledAt = new Date().toISOString();
+		pollTimer = setInterval( poll, cfg.pollInterval || 15000 );
+	}
+
+	function stopPolling() {
+		if ( pollTimer ) {
+			clearInterval( pollTimer );
+			pollTimer = null;
+		}
+	}
+
+	function poll() {
+		var since = polledAt;
+		polledAt  = new Date().toISOString();
+
+		ajaxPost( 'tsh_wa_inbox_poll', { since: since }, function ( data ) {
+			var msgs = data.messages || [];
+
+			// Inject new messages if they belong to the active conversation.
+			$.each( msgs, function ( i, msg ) {
+				if ( parseInt( msg.conversation_id ) === parseInt( state.activeConvId ) ) {
+					// Don't re-render duplicates.
+					if ( ! $( '.tsh-wa-msg[data-id="' + msg.id + '"]' ).length ) {
+						$( '#tsh-wa-messages-container' ).append( renderMessage( msg ) );
+					}
+				}
+			} );
+
+			if ( msgs.length ) {
+				scrollToBottom();
+			}
+
+			// Refresh conversation list to show updated previews / unread counts.
+			if ( msgs.length ) {
+				loadConversations( 1, false );
+			}
+
+			// Update unread badge.
+			var unread = data.unread || {};
+			var total  = unread.total || 0;
+			$( '#tsh-wa-tab-badge-open' ).text( total || '' );
+		} );
+	}
+
+	// ---------------------------------------------------------------------------
+	// Helper: refresh a single conversation item in the list
+	// ---------------------------------------------------------------------------
+
+	function refreshConvItem( convId ) {
+		// Re-fetch just to update the preview — lightweight.
+		ajaxPost( 'tsh_wa_inbox_get_conversations', { status: state.currentStatus, page: 1 }, function ( data ) {
+			var found = null;
+			$.each( data.conversations || [], function ( i, c ) {
+				if ( parseInt( c.id ) === parseInt( convId ) ) { found = c; return false; }
+			} );
+			if ( found ) {
+				var $item = $( '.tsh-wa-conv-item[data-id="' + convId + '"]' );
+				var $new  = $( renderConvItem( found ) );
+				$item.replaceWith( $new );
+			}
+		} );
+	}
+
+	// ---------------------------------------------------------------------------
+	// Event bindings
+	// ---------------------------------------------------------------------------
+
+	function bindEvents() {
+		var $doc = $( document );
+
+		// Click a conversation.
+		$doc.on( 'click', '.tsh-wa-conv-item', function () {
+			var id = $( this ).data( 'id' );
+			openConversation( id );
+		} );
+
+		// Filter tabs.
+		$doc.on( 'click', '.tsh-wa-inbox-tab', function () {
+			$( '.tsh-wa-inbox-tab' ).removeClass( 'tsh-wa-inbox-tab--active' );
+			$( this ).addClass( 'tsh-wa-inbox-tab--active' );
+			state.currentStatus = $( this ).data( 'status' );
+			state.convPage = 1;
+			loadConversations( 1, false );
+		} );
+
+		// Load more conversations.
+		$doc.on( 'click', '#tsh-wa-load-more-convs', function () {
+			var page = parseInt( $( this ).data( 'page' ) ) || 2;
+			loadConversations( page, true );
+		} );
+
+		// Composer mode switch.
+		$doc.on( 'click', '.tsh-wa-composer-tab', function () {
+			state.composerMode = $( this ).data( 'mode' );
+			$( '.tsh-wa-composer-tab' ).removeClass( 'tsh-wa-composer-tab--active' );
+			$( this ).addClass( 'tsh-wa-composer-tab--active' );
+			$( '#tsh-wa-composer-text' ).attr( 'placeholder',
+				state.composerMode === 'note' ? i18n.type_note : i18n.type_message
+			);
+			$( '#tsh-wa-send-label' ).text(
+				state.composerMode === 'note' ? i18n.add_note : i18n.send
+			);
+		} );
+
+		// Send on button click.
+		$doc.on( 'click', '#tsh-wa-send-btn', sendMessage );
+
+		// Send on Ctrl+Enter.
+		$doc.on( 'keydown', '#tsh-wa-composer-text', function ( e ) {
+			if ( e.ctrlKey && e.keyCode === 13 ) {
+				sendMessage();
+			}
+		} );
+
+		// Character counter.
+		$doc.on( 'input', '#tsh-wa-composer-text', function () {
+			$( '#tsh-wa-char-count' ).text( $( this ).val().length + ' / 4096' );
+		} );
+
+		// Status change.
+		$doc.on( 'change', '#tsh-wa-chat-status', function () {
+			if ( ! state.activeConvId ) { return; }
+			var status = $( this ).val();
+			ajaxPost( 'tsh_wa_inbox_update_status', {
+				conversation_id: state.activeConvId,
+				status: status,
+			}, function () {
+				showToast( i18n.status_updated, 'success' );
+				loadConversations( 1, false );
+			} );
+		} );
+
+		// Agent assignment.
+		$doc.on( 'change', '#tsh-wa-chat-assign', function () {
+			if ( ! state.activeConvId ) { return; }
+			ajaxPost( 'tsh_wa_inbox_assign', {
+				conversation_id: state.activeConvId,
+				user_id: $( this ).val(),
+			}, function () {
+				showToast( i18n.assigned, 'success' );
+			} );
+		} );
+
+		// Pin toggle.
+		$doc.on( 'click', '#tsh-wa-chat-pin', function () {
+			if ( ! state.activeConvId ) { return; }
+			var pinned = ! $( this ).hasClass( 'tsh-wa-btn-active' );
+			ajaxPost( 'tsh_wa_inbox_set_pinned', {
+				conversation_id: state.activeConvId,
+				pinned: pinned ? '1' : '0',
+			}, function ( data ) {
+				$( '#tsh-wa-chat-pin' ).toggleClass( 'tsh-wa-btn-active', data.pinned );
+				showToast( data.message, 'success' );
+				loadConversations( 1, false );
+			} );
+		} );
+
+		// Label dropdown toggle.
+		$doc.on( 'click', '#tsh-wa-chat-label-btn', function ( e ) {
+			e.stopPropagation();
+			$( '#tsh-wa-label-dropdown' ).toggle();
+		} );
+
+		// Close dropdown on outside click.
+		$doc.on( 'click', function ( e ) {
+			if ( ! $( e.target ).closest( '.tsh-wa-dropdown-wrap' ).length ) {
+				$( '.tsh-wa-dropdown' ).hide();
+			}
+		} );
+
+		// Label toggle.
+		$doc.on( 'change', '.tsh-wa-label-toggle', function () {
+			if ( ! state.activeConvId ) { return; }
+			var label   = $( this ).val();
+			var checked = $( this ).is( ':checked' );
+			var action  = checked ? 'tsh_wa_inbox_add_label' : 'tsh_wa_inbox_remove_label';
+			ajaxPost( action, { conversation_id: state.activeConvId, label: label }, function () {
+				showToast( checked ? i18n.label_added : i18n.label_removed, 'success' );
+				refreshConvItem( state.activeConvId );
+			} );
+		} );
+
+		// Load older messages.
+		$doc.on( 'click', '#tsh-wa-load-older', function () {
+			if ( ! state.activeConvId ) { return; }
+			var firstId = $( '.tsh-wa-msg' ).first().data( 'id' );
+			ajaxPost( 'tsh_wa_inbox_get_conversation', {
+				conversation_id: state.activeConvId,
+				limit           : 30,
+				before_id       : firstId,
+			}, function ( data ) {
+				var msgs = data.messages || [];
+				if ( ! msgs.length ) {
+					$( '#tsh-wa-load-older-wrap' ).hide();
+					return;
+				}
+				// Prepend and keep scroll position.
+				var $container = $( '#tsh-wa-chat-messages' );
+				var prevHeight  = $container[ 0 ].scrollHeight;
+				renderMessages( msgs, true );
+				$container.scrollTop( $container[ 0 ].scrollHeight - prevHeight );
+
+				if ( ! data.has_older ) {
+					$( '#tsh-wa-load-older-wrap' ).hide();
+				}
+			} );
+		} );
+
+		// Media download.
+		$doc.on( 'click', '.tsh-wa-msg__download-btn', function () {
+			var msgId = $( this ).data( 'msg-id' );
+			var $btn  = $( this );
+			$btn.prop( 'disabled', true );
+			ajaxPost( 'tsh_wa_inbox_download_media', { message_id: msgId }, function () {
+				showToast( i18n.downloaded, 'success' );
+				// Refresh the conversation to get the media URL.
+				openConversation( state.activeConvId );
+			}, function ( err ) {
+				showToast( err, 'error' );
+				$btn.prop( 'disabled', false );
+			} );
+		} );
+
+		// Copy webhook URL.
+		$doc.on( 'click', '.tsh-wa-btn-copy', function () {
+			var targetId = $( this ).data( 'copy' );
+			var text     = $( '#' + targetId ).text();
+			if ( navigator.clipboard ) {
+				navigator.clipboard.writeText( text ).then( function () {
+					showToast( i18n.copied, 'success' );
+				} );
+			} else {
+				var $tmp = $( '<textarea>' ).val( text ).appendTo( 'body' ).select();
+				document.execCommand( 'copy' );
+				$tmp.remove();
+				showToast( i18n.copied, 'success' );
+			}
+		} );
+
+		// Search.
+		$doc.on( 'input', '#tsh-wa-inbox-search', function () {
+			var q = $( this ).val().trim();
+			$( '#tsh-wa-inbox-search-clear' ).toggle( q.length > 0 );
+			clearTimeout( state.searchTimer );
+			if ( ! q ) {
+				loadConversations( 1, false );
+				return;
+			}
+			state.searchTimer = setTimeout( function () {
+				ajaxPost( 'tsh_wa_inbox_search', { query: q, limit: 30 }, function ( data ) {
+					var results = data.results || [];
+					var html    = '';
+					if ( ! results.length ) {
+						html = '<div class="tsh-wa-inbox-empty-state"><p>' + escHtml( i18n.no_conversations ) + '</p></div>';
+					} else {
+						html = '<div id="tsh-wa-conv-items">';
+						$.each( results, function ( i, c ) { html += renderConvItem( c ); } );
+						html += '</div>';
+					}
+					$( '#tsh-wa-inbox-conv-list' ).html( html );
+				} );
+			}, 350 );
+		} );
+
+		$doc.on( 'click', '#tsh-wa-inbox-search-clear', function () {
+			$( '#tsh-wa-inbox-search' ).val( '' ).trigger( 'focus' );
+			$( this ).hide();
+			loadConversations( 1, false );
+		} );
+	}
+
+	// ---------------------------------------------------------------------------
+	// Init
+	// ---------------------------------------------------------------------------
+
+	function init() {
+		bindEvents();
+		// Render initial conversation list from server-preloaded data.
+		if ( cfg.conversations && cfg.conversations.length ) {
+			var html = '<div id="tsh-wa-conv-items">';
+			$.each( cfg.conversations, function ( i, c ) { html += renderConvItem( c ); } );
+			html += '</div>';
+			$( '#tsh-wa-inbox-conv-list' ).html( html );
+		}
+		startPolling();
+	}
+
+	return {
+		init        : init,
+		openConv    : openConversation,
+		showToast   : showToast,
+		refresh     : function () { loadConversations( 1, false ); },
+	};
+
+}( jQuery ) );
+
+// ---------------------------------------------------------------------------
+// Bootstrap Phase 6 inbox on the inbox admin page.
+// ---------------------------------------------------------------------------
+
+$( function () {
+	if ( typeof TshWaAdmin.inbox !== 'undefined' && typeof TshWaAdmin.inbox.init === 'function' ) {
+		TshWaAdmin.inbox.init();
+	}
+} );

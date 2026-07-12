@@ -26,6 +26,7 @@ use TSH\WhatsAppNotify\Queue\DeadLetterQueue;
 use TSH\WhatsAppNotify\Queue\QueueProcessor;
 use TSH\WhatsAppNotify\Queue\QueueStats;
 use TSH\WhatsAppNotify\Queue\RateLimiter;
+use TSH\WhatsAppNotify\Inbox\InboxManager;
 use TSH\WhatsAppNotify\Templates\TemplateAssignment;
 use TSH\WhatsAppNotify\Templates\TemplateExporter;
 use TSH\WhatsAppNotify\Templates\TemplateImporter;
@@ -79,6 +80,24 @@ final class Ajax {
 			'tsh_wa_dlq_clear',
 			'tsh_wa_queue_export',
 			'tsh_wa_queue_retry_all',
+			// Phase 6 — Inbox / Conversation Hub.
+			'tsh_wa_inbox_get_conversations',
+			'tsh_wa_inbox_get_conversation',
+			'tsh_wa_inbox_send_reply',
+			'tsh_wa_inbox_add_note',
+			'tsh_wa_inbox_assign',
+			'tsh_wa_inbox_update_status',
+			'tsh_wa_inbox_set_pinned',
+			'tsh_wa_inbox_add_label',
+			'tsh_wa_inbox_remove_label',
+			'tsh_wa_inbox_search',
+			'tsh_wa_inbox_get_analytics',
+			'tsh_wa_inbox_get_customer_profile',
+			'tsh_wa_inbox_poll',
+			'tsh_wa_inbox_resync',
+			'tsh_wa_inbox_rebuild',
+			'tsh_wa_inbox_clear_cache',
+			'tsh_wa_inbox_download_media',
 			// Phase 5 — Template management.
 			'tsh_wa_sync_templates',
 			'tsh_wa_force_full_sync',
@@ -1160,6 +1179,290 @@ final class Ajax {
 
 		$manager = new TemplateManager();
 		wp_send_json_success( $manager->get_dashboard_overview() );
+	}
+
+	// -------------------------------------------------------------------------
+	// Phase 6 — Inbox / Conversation Hub handlers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * AJAX: tsh_wa_inbox_get_conversations
+	 */
+	public function handle_tsh_wa_inbox_get_conversations(): void {
+		$this->verify_request();
+		$manager = new InboxManager();
+		$result  = $manager->get_conversations( [
+			'status'      => sanitize_key( $_POST['status'] ?? 'open' ),
+			'page'        => absint( $_POST['page'] ?? 1 ),
+			'per_page'    => min( 100, absint( $_POST['per_page'] ?? 30 ) ),
+			'order_by'    => sanitize_key( $_POST['order_by'] ?? 'last_message_at' ),
+			'order'       => strtoupper( sanitize_key( $_POST['order'] ?? 'DESC' ) ),
+			'pinned_first'=> true,
+		] );
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_get_conversation
+	 */
+	public function handle_tsh_wa_inbox_get_conversation(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['conversation_id'] ?? 0 );
+		$before = absint( $_POST['before_id'] ?? 0 );
+		$limit  = min( 100, absint( $_POST['limit'] ?? 50 ) );
+		if ( ! $id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid conversation ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		$result  = $manager->get_conversation_detail( $id, $limit, $before );
+		if ( ! $result ) {
+			wp_send_json_error( [ 'message' => __( 'Conversation not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_send_reply
+	 */
+	public function handle_tsh_wa_inbox_send_reply(): void {
+		$this->verify_request();
+		$id      = absint( $_POST['conversation_id'] ?? 0 );
+		$message = sanitize_textarea_field( wp_unslash( $_POST['message'] ?? '' ) );
+		if ( ! $id || ! $message ) {
+			wp_send_json_error( [ 'message' => __( 'Conversation ID and message are required.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		$result  = $manager->send_reply( $id, $message );
+		if ( $result['success'] ) {
+			wp_send_json_success( $result );
+		} else {
+			wp_send_json_error( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_add_note
+	 */
+	public function handle_tsh_wa_inbox_add_note(): void {
+		$this->verify_request();
+		$id   = absint( $_POST['conversation_id'] ?? 0 );
+		$note = sanitize_textarea_field( wp_unslash( $_POST['note'] ?? '' ) );
+		if ( ! $id || ! $note ) {
+			wp_send_json_error( [ 'message' => __( 'Conversation ID and note are required.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		$result  = $manager->add_note( $id, $note );
+		if ( $result['success'] ) {
+			wp_send_json_success( $result );
+		} else {
+			wp_send_json_error( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_assign
+	 */
+	public function handle_tsh_wa_inbox_assign(): void {
+		$this->verify_request();
+		$id      = absint( $_POST['conversation_id'] ?? 0 );
+		$user_id = isset( $_POST['user_id'] ) && '' !== $_POST['user_id']
+			? absint( $_POST['user_id'] )
+			: null;
+		if ( ! $id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid conversation ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		$ok      = $manager->assign_conversation( $id, $user_id );
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Conversation assigned.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Assignment failed.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_update_status
+	 */
+	public function handle_tsh_wa_inbox_update_status(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['conversation_id'] ?? 0 );
+		$status = sanitize_key( $_POST['status'] ?? '' );
+		if ( ! $id || ! $status ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid request.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		$ok      = $manager->update_status( $id, $status );
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Status updated.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Update failed.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_set_pinned
+	 */
+	public function handle_tsh_wa_inbox_set_pinned(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['conversation_id'] ?? 0 );
+		$pinned = ! empty( $_POST['pinned'] ) && '1' === (string) $_POST['pinned'];
+		if ( ! $id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid conversation ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		$ok      = $manager->set_pinned( $id, $pinned );
+		wp_send_json_success( [
+			'pinned'  => $pinned,
+			/* translators: conversation pinned/unpinned */
+			'message' => $pinned ? __( 'Conversation pinned.', 'tsh-whatsapp-notify' ) : __( 'Conversation unpinned.', 'tsh-whatsapp-notify' ),
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_add_label
+	 */
+	public function handle_tsh_wa_inbox_add_label(): void {
+		$this->verify_request();
+		$id    = absint( $_POST['conversation_id'] ?? 0 );
+		$label = sanitize_key( $_POST['label'] ?? '' );
+		if ( ! $id || ! $label ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid request.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		$ok      = $manager->add_label( $id, $label );
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Label added.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Failed to add label.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_remove_label
+	 */
+	public function handle_tsh_wa_inbox_remove_label(): void {
+		$this->verify_request();
+		$id    = absint( $_POST['conversation_id'] ?? 0 );
+		$label = sanitize_key( $_POST['label'] ?? '' );
+		if ( ! $id || ! $label ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid request.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		$ok      = $manager->remove_label( $id, $label );
+		wp_send_json_success( [ 'message' => __( 'Label removed.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_search
+	 */
+	public function handle_tsh_wa_inbox_search(): void {
+		$this->verify_request();
+		$query  = sanitize_text_field( wp_unslash( $_POST['query'] ?? '' ) );
+		$limit  = min( 50, absint( $_POST['limit'] ?? 30 ) );
+		$offset = absint( $_POST['offset'] ?? 0 );
+		$manager = new InboxManager();
+		wp_send_json_success( $manager->search( $query, $limit, $offset ) );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_get_analytics
+	 */
+	public function handle_tsh_wa_inbox_get_analytics(): void {
+		$this->verify_request();
+		$manager = new InboxManager();
+		wp_send_json_success( $manager->get_analytics() );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_get_customer_profile
+	 */
+	public function handle_tsh_wa_inbox_get_customer_profile(): void {
+		$this->verify_request();
+		$id = absint( $_POST['conversation_id'] ?? 0 );
+		if ( ! $id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid conversation ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		wp_send_json_success( $manager->get_customer_profile( $id ) );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_poll — return new messages since a given datetime.
+	 */
+	public function handle_tsh_wa_inbox_poll(): void {
+		$this->verify_request();
+		$since   = sanitize_text_field( $_POST['since'] ?? '' );
+		if ( ! $since ) {
+			$since = gmdate( 'Y-m-d H:i:s', time() - 30 );
+		}
+		$manager  = new InboxManager();
+		$messages = $manager->poll_new_messages( $since );
+		$unread   = ( new \TSH\WhatsAppNotify\Inbox\ConversationRepository() )->get_unread_counts();
+		wp_send_json_success( [
+			'messages'   => $messages,
+			'unread'     => $unread,
+			'polled_at'  => current_time( 'c' ),
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_resync — refresh customer + order links on all conversations.
+	 */
+	public function handle_tsh_wa_inbox_resync(): void {
+		$this->verify_request();
+		$manager = new InboxManager();
+		$result  = $manager->resync();
+		wp_send_json_success( [
+			'message' => sprintf(
+				/* translators: %1$d: updated count, %2$d: skipped count */
+				__( 'Resync complete. Updated: %1$d, Skipped: %2$d', 'tsh-whatsapp-notify' ),
+				$result['updated'],
+				$result['skipped']
+			),
+			'stats'   => $result,
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_rebuild — wipe and rebuild (destructive).
+	 */
+	public function handle_tsh_wa_inbox_rebuild(): void {
+		$this->verify_request();
+		$manager = new InboxManager();
+		$ok      = $manager->rebuild();
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Inbox rebuilt. All conversation data cleared.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Rebuild failed.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_clear_cache
+	 */
+	public function handle_tsh_wa_inbox_clear_cache(): void {
+		$this->verify_request();
+		$manager = new InboxManager();
+		$manager->clear_cache();
+		wp_send_json_success( [ 'message' => __( 'Inbox cache cleared.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_inbox_download_media — trigger on-demand media download.
+	 */
+	public function handle_tsh_wa_inbox_download_media(): void {
+		$this->verify_request();
+		$message_id = absint( $_POST['message_id'] ?? 0 );
+		if ( ! $message_id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid message ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+		$manager = new InboxManager();
+		$ok      = $manager->download_media( $message_id );
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Media downloaded successfully.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Media download failed.', 'tsh-whatsapp-notify' ) ] );
+		}
 	}
 
 	// -------------------------------------------------------------------------
