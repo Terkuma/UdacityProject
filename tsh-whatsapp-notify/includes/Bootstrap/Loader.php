@@ -24,6 +24,17 @@ use TSH\WhatsAppNotify\Orders\OrderStatusListener;
 use TSH\WhatsAppNotify\Queue\QueueProcessor;
 use TSH\WhatsAppNotify\Automation\AutomationEngine;
 use TSH\WhatsAppNotify\Inbox\InboxManager;
+use TSH\WhatsAppNotify\Marketing\AudienceBuilder;
+use TSH\WhatsAppNotify\Marketing\BroadcastEngine;
+use TSH\WhatsAppNotify\Marketing\CampaignLogger;
+use TSH\WhatsAppNotify\Marketing\CampaignManager;
+use TSH\WhatsAppNotify\Marketing\CampaignQueue as MarketingQueue;
+use TSH\WhatsAppNotify\Marketing\CampaignRepository;
+use TSH\WhatsAppNotify\Marketing\CampaignRunner;
+use TSH\WhatsAppNotify\Marketing\CampaignScheduler;
+use TSH\WhatsAppNotify\Marketing\CampaignValidator;
+use TSH\WhatsAppNotify\Marketing\CouponEngine;
+use TSH\WhatsAppNotify\Marketing\SegmentEngine;
 use TSH\WhatsAppNotify\Templates\TemplateManager;
 use TSH\WhatsAppNotify\Templates\TemplateSync;
 
@@ -138,6 +149,20 @@ final class Loader {
 		// Phase 7: Automation Engine — trigger hooks + cron scheduler.
 		$this->components['automation'] = AutomationEngine::get_instance();
 		$this->components['automation']->register_hooks();
+
+		// Phase 8: Marketing / Broadcast Engine — cron hooks.
+		$repo      = new CampaignRepository();
+		$validator = new CampaignValidator();
+		$logger    = new CampaignLogger( $repo );
+		$coupon    = new CouponEngine();
+		$cqueue    = new MarketingQueue( new \TSH\WhatsAppNotify\Queue\Queue(), $coupon );
+		$segment   = new SegmentEngine();
+		$audience  = new AudienceBuilder( $segment );
+		$broadcast = new BroadcastEngine( $audience, $cqueue, $repo, $logger );
+		$runner    = new CampaignRunner( $repo, $broadcast, $validator, $logger );
+		$scheduler = new CampaignScheduler( $runner, $repo );
+		$scheduler->register_hooks();
+		$this->components['campaign_scheduler'] = $scheduler;
 
 		// Admin-only components — never loaded on the frontend.
 		if ( is_admin() ) {

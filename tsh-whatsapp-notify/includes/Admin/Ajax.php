@@ -35,6 +35,20 @@ use TSH\WhatsAppNotify\Automation\WorkflowRepository;
 use TSH\WhatsAppNotify\Automation\WorkflowRunner;
 use TSH\WhatsAppNotify\Automation\WorkflowValidator;
 use TSH\WhatsAppNotify\Inbox\InboxManager;
+use TSH\WhatsAppNotify\Marketing\AudienceBuilder;
+use TSH\WhatsAppNotify\Marketing\BroadcastEngine;
+use TSH\WhatsAppNotify\Marketing\CampaignAnalytics;
+use TSH\WhatsAppNotify\Marketing\CampaignExporter;
+use TSH\WhatsAppNotify\Marketing\CampaignImporter;
+use TSH\WhatsAppNotify\Marketing\CampaignLogger;
+use TSH\WhatsAppNotify\Marketing\CampaignManager;
+use TSH\WhatsAppNotify\Marketing\CampaignQueue;
+use TSH\WhatsAppNotify\Marketing\CampaignRepository;
+use TSH\WhatsAppNotify\Marketing\CampaignRunner;
+use TSH\WhatsAppNotify\Marketing\CampaignTemplates;
+use TSH\WhatsAppNotify\Marketing\CampaignValidator;
+use TSH\WhatsAppNotify\Marketing\CouponEngine;
+use TSH\WhatsAppNotify\Marketing\SegmentEngine;
 use TSH\WhatsAppNotify\Templates\TemplateAssignment;
 use TSH\WhatsAppNotify\Templates\TemplateExporter;
 use TSH\WhatsAppNotify\Templates\TemplateImporter;
@@ -88,6 +102,31 @@ final class Ajax {
 			'tsh_wa_dlq_clear',
 			'tsh_wa_queue_export',
 			'tsh_wa_queue_retry_all',
+			// Phase 8 — Marketing & Broadcast Engine.
+			'tsh_wa_mkt_list',
+			'tsh_wa_mkt_get',
+			'tsh_wa_mkt_create',
+			'tsh_wa_mkt_update',
+			'tsh_wa_mkt_delete',
+			'tsh_wa_mkt_duplicate',
+			'tsh_wa_mkt_launch',
+			'tsh_wa_mkt_pause',
+			'tsh_wa_mkt_resume',
+			'tsh_wa_mkt_cancel',
+			'tsh_wa_mkt_archive',
+			'tsh_wa_mkt_preview',
+			'tsh_wa_mkt_analytics',
+			'tsh_wa_mkt_runs',
+			'tsh_wa_mkt_logs',
+			'tsh_wa_mkt_export',
+			'tsh_wa_mkt_import',
+			'tsh_wa_mkt_templates',
+			'tsh_wa_mkt_import_template',
+			'tsh_wa_mkt_segments',
+			'tsh_wa_mkt_save_segment',
+			'tsh_wa_mkt_delete_segment',
+			'tsh_wa_mkt_estimate_audience',
+			'tsh_wa_mkt_dashboard',
 			// Phase 7 — Workflow Automation Engine.
 			'tsh_wa_wf_list',
 			'tsh_wa_wf_get',
@@ -1957,6 +1996,472 @@ final class Ajax {
 		} else {
 			wp_send_json_error( [ 'message' => __( 'Media download failed.', 'tsh-whatsapp-notify' ) ] );
 		}
+	}
+
+	// =========================================================================
+	// Phase 8 — Marketing & Broadcast Engine handlers
+	// =========================================================================
+
+	/** Build a fully wired CampaignManager instance. */
+	private function make_campaign_manager(): CampaignManager {
+		$repo      = new CampaignRepository();
+		$validator = new CampaignValidator();
+		$logger    = new CampaignLogger( $repo );
+		$coupon    = new CouponEngine();
+		$queue     = new \TSH\WhatsAppNotify\Queue\Queue();
+		$cqueue    = new CampaignQueue( $queue, $coupon );
+		$segment   = new SegmentEngine();
+		$audience  = new AudienceBuilder( $segment );
+		$broadcast = new BroadcastEngine( $audience, $cqueue, $repo, $logger );
+		$runner    = new CampaignRunner( $repo, $broadcast, $validator, $logger );
+
+		return new CampaignManager( $repo, $runner, $validator, $logger, $broadcast, $audience );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_list — paginated campaign list.
+	 */
+	public function handle_tsh_wa_mkt_list(): void {
+		$this->verify_request();
+
+		$args = [
+			'status'   => sanitize_key( $_POST['status'] ?? '' ),
+			'type'     => sanitize_key( $_POST['type'] ?? '' ),
+			'search'   => sanitize_text_field( $_POST['search'] ?? '' ),
+			'per_page' => min( 50, max( 1, absint( $_POST['per_page'] ?? 20 ) ) ),
+			'page'     => max( 1, absint( $_POST['page'] ?? 1 ) ),
+			'orderby'  => sanitize_key( $_POST['orderby'] ?? 'created_at' ),
+			'order'    => sanitize_key( $_POST['order'] ?? 'DESC' ),
+		];
+
+		$result = ( new CampaignRepository() )->get_campaigns( $args );
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_get — get a single campaign.
+	 */
+	public function handle_tsh_wa_mkt_get(): void {
+		$this->verify_request();
+
+		$id       = absint( $_POST['campaign_id'] ?? 0 );
+		$campaign = ( new CampaignRepository() )->get_campaign( $id );
+
+		if ( ! $campaign ) {
+			wp_send_json_error( [ 'message' => __( 'Campaign not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		wp_send_json_success( [ 'campaign' => $campaign ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_create — create a new campaign.
+	 */
+	public function handle_tsh_wa_mkt_create(): void {
+		$this->verify_request();
+
+		$data = [
+			'name'            => sanitize_text_field( $_POST['name'] ?? '' ),
+			'description'     => sanitize_textarea_field( $_POST['description'] ?? '' ),
+			'status'          => sanitize_key( $_POST['status'] ?? 'draft' ),
+			'type'            => sanitize_key( $_POST['type'] ?? 'onetime' ),
+			'template_id'     => absint( $_POST['template_id'] ?? 0 ) ?: null,
+			'template_b_id'   => absint( $_POST['template_b_id'] ?? 0 ) ?: null,
+			'ab_split_ratio'  => absint( $_POST['ab_split_ratio'] ?? 50 ),
+			'send_at'         => sanitize_text_field( $_POST['send_at'] ?? '' ) ?: null,
+			'audience_config' => $this->decode_json_post( 'audience_config' ),
+			'message_config'  => $this->decode_json_post( 'message_config' ),
+			'schedule_config' => $this->decode_json_post( 'schedule_config' ),
+			'coupon_config'   => $this->decode_json_post( 'coupon_config' ),
+			'throttle_config' => $this->decode_json_post( 'throttle_config' ),
+		];
+
+		$result = $this->make_campaign_manager()->create( $data );
+
+		if ( $result['success'] ) {
+			wp_send_json_success( $result );
+		} else {
+			wp_send_json_error( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_update — update an existing campaign.
+	 */
+	public function handle_tsh_wa_mkt_update(): void {
+		$this->verify_request();
+
+		$id   = absint( $_POST['campaign_id'] ?? 0 );
+		$data = [];
+
+		$text_fields = [ 'name', 'description', 'send_at' ];
+		foreach ( $text_fields as $field ) {
+			if ( isset( $_POST[ $field ] ) ) {
+				$data[ $field ] = sanitize_text_field( $_POST[ $field ] );
+			}
+		}
+
+		$key_fields = [ 'status', 'type' ];
+		foreach ( $key_fields as $field ) {
+			if ( isset( $_POST[ $field ] ) ) {
+				$data[ $field ] = sanitize_key( $_POST[ $field ] );
+			}
+		}
+
+		$int_fields = [ 'template_id', 'template_b_id', 'ab_split_ratio' ];
+		foreach ( $int_fields as $field ) {
+			if ( isset( $_POST[ $field ] ) ) {
+				$data[ $field ] = absint( $_POST[ $field ] ) ?: null;
+			}
+		}
+
+		$json_fields = [ 'audience_config', 'message_config', 'schedule_config', 'coupon_config', 'throttle_config' ];
+		foreach ( $json_fields as $field ) {
+			if ( isset( $_POST[ $field ] ) ) {
+				$data[ $field ] = $this->decode_json_post( $field );
+			}
+		}
+
+		$result = $this->make_campaign_manager()->update( $id, $data );
+
+		if ( $result['success'] ) {
+			wp_send_json_success( [ 'message' => __( 'Campaign updated.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_delete — delete a campaign.
+	 */
+	public function handle_tsh_wa_mkt_delete(): void {
+		$this->verify_request();
+
+		$id = absint( $_POST['campaign_id'] ?? 0 );
+		$ok = $this->make_campaign_manager()->delete( $id );
+
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Campaign deleted.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Campaign not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_duplicate — clone a campaign as a draft.
+	 */
+	public function handle_tsh_wa_mkt_duplicate(): void {
+		$this->verify_request();
+
+		$id     = absint( $_POST['campaign_id'] ?? 0 );
+		$new_id = $this->make_campaign_manager()->duplicate( $id );
+
+		if ( $new_id ) {
+			$campaign = ( new CampaignRepository() )->get_campaign( $new_id );
+			wp_send_json_success( [ 'campaign_id' => $new_id, 'campaign' => $campaign ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Duplicate failed.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_launch — launch a campaign.
+	 */
+	public function handle_tsh_wa_mkt_launch(): void {
+		$this->verify_request();
+
+		$id            = absint( $_POST['campaign_id'] ?? 0 );
+		$schedule_only = ! empty( $_POST['schedule_only'] );
+		$result        = $this->make_campaign_manager()->launch( $id, $schedule_only );
+
+		if ( $result['success'] ) {
+			wp_send_json_success( $result );
+		} else {
+			wp_send_json_error( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_pause — pause a running campaign.
+	 */
+	public function handle_tsh_wa_mkt_pause(): void {
+		$this->verify_request();
+
+		$id = absint( $_POST['campaign_id'] ?? 0 );
+		$ok = $this->make_campaign_manager()->pause( $id );
+
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Campaign paused.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Could not pause campaign.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_resume — resume a paused campaign.
+	 */
+	public function handle_tsh_wa_mkt_resume(): void {
+		$this->verify_request();
+
+		$id = absint( $_POST['campaign_id'] ?? 0 );
+		$ok = $this->make_campaign_manager()->resume( $id );
+
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Campaign resumed.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Could not resume campaign.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_cancel — cancel a running campaign.
+	 */
+	public function handle_tsh_wa_mkt_cancel(): void {
+		$this->verify_request();
+
+		$id = absint( $_POST['campaign_id'] ?? 0 );
+		$ok = $this->make_campaign_manager()->cancel( $id );
+
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Campaign cancelled.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Campaign not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_archive — archive a campaign.
+	 */
+	public function handle_tsh_wa_mkt_archive(): void {
+		$this->verify_request();
+
+		$id = absint( $_POST['campaign_id'] ?? 0 );
+		$ok = $this->make_campaign_manager()->archive( $id );
+
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Campaign archived.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Could not archive campaign.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_preview — estimate audience + duration.
+	 */
+	public function handle_tsh_wa_mkt_preview(): void {
+		$this->verify_request();
+
+		$campaign = [
+			'audience_config' => $this->decode_json_post( 'audience_config' ),
+			'throttle_config' => $this->decode_json_post( 'throttle_config' ),
+			'template_b_id'   => absint( $_POST['template_b_id'] ?? 0 ) ?: null,
+			'coupon_config'   => $this->decode_json_post( 'coupon_config' ),
+		];
+
+		$preview = $this->make_campaign_manager()->preview( $campaign );
+
+		wp_send_json_success( $preview );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_analytics — get campaign analytics.
+	 */
+	public function handle_tsh_wa_mkt_analytics(): void {
+		$this->verify_request();
+
+		$campaign_id = absint( $_POST['campaign_id'] ?? 0 );
+		$run_id      = absint( $_POST['run_id'] ?? 0 );
+
+		$repo      = new CampaignRepository();
+		$analytics = new CampaignAnalytics( $repo );
+
+		if ( $campaign_id ) {
+			$data = $analytics->get_campaign_analytics( $campaign_id, $run_id );
+		} else {
+			$days = absint( $_POST['days'] ?? 30 );
+			$data = $analytics->get_dashboard_stats( $days );
+		}
+
+		wp_send_json_success( $data );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_runs — get run history for a campaign.
+	 */
+	public function handle_tsh_wa_mkt_runs(): void {
+		$this->verify_request();
+
+		$campaign_id = absint( $_POST['campaign_id'] ?? 0 );
+		$per_page    = min( 50, max( 1, absint( $_POST['per_page'] ?? 20 ) ) );
+		$page        = max( 1, absint( $_POST['page'] ?? 1 ) );
+
+		$result = ( new CampaignRepository() )->get_runs( $campaign_id, $per_page, $page );
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_logs — get log entries for a campaign/run.
+	 */
+	public function handle_tsh_wa_mkt_logs(): void {
+		$this->verify_request();
+
+		$campaign_id = absint( $_POST['campaign_id'] ?? 0 );
+		$run_id      = absint( $_POST['run_id'] ?? 0 );
+		$limit       = min( 200, max( 1, absint( $_POST['limit'] ?? 100 ) ) );
+
+		$logs = ( new CampaignRepository() )->get_logs( $campaign_id, $run_id, $limit );
+
+		wp_send_json_success( [ 'logs' => $logs ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_export — export one or more campaigns as JSON.
+	 */
+	public function handle_tsh_wa_mkt_export(): void {
+		$this->verify_request();
+
+		$campaign_ids  = array_map( 'absint', (array) ( $_POST['campaign_ids'] ?? [] ) );
+		$include_stats = ! empty( $_POST['include_stats'] );
+
+		$repo     = new CampaignRepository();
+		$exporter = new CampaignExporter( $repo );
+		$json     = $exporter->export_campaigns( $campaign_ids, $include_stats );
+
+		wp_send_json_success( [ 'json' => $json ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_import — import campaigns from JSON.
+	 */
+	public function handle_tsh_wa_mkt_import(): void {
+		$this->verify_request();
+
+		$json        = wp_unslash( $_POST['json'] ?? '' );
+		$replace_all = ! empty( $_POST['replace_all'] );
+
+		$repo     = new CampaignRepository();
+		$importer = new CampaignImporter( $repo, new CampaignValidator() );
+		$result   = $importer->import_from_json( $json, $replace_all );
+
+		if ( $result['imported'] > 0 ) {
+			wp_send_json_success( $result );
+		} else {
+			wp_send_json_error( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_templates — return built-in campaign templates.
+	 */
+	public function handle_tsh_wa_mkt_templates(): void {
+		$this->verify_request();
+
+		$templates = ( new CampaignTemplates() )->get_by_category();
+
+		wp_send_json_success( [ 'templates' => $templates ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_import_template — create a campaign from a built-in template.
+	 */
+	public function handle_tsh_wa_mkt_import_template(): void {
+		$this->verify_request();
+
+		$template_id = sanitize_key( $_POST['template_id'] ?? '' );
+
+		$repo     = new CampaignRepository();
+		$importer = new CampaignImporter( $repo, new CampaignValidator() );
+		$id       = $importer->import_from_template( $template_id );
+
+		if ( $id ) {
+			$campaign = $repo->get_campaign( $id );
+			wp_send_json_success( [ 'campaign_id' => $id, 'campaign' => $campaign ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Template not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_segments — list saved segments.
+	 */
+	public function handle_tsh_wa_mkt_segments(): void {
+		$this->verify_request();
+
+		$segment   = new SegmentEngine();
+		$audience  = new AudienceBuilder( $segment );
+		$segments  = $audience->get_all_segments();
+		$labels    = $audience->get_audience_type_labels();
+
+		wp_send_json_success( [ 'segments' => $segments, 'type_labels' => $labels ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_save_segment — persist a named audience config.
+	 */
+	public function handle_tsh_wa_mkt_save_segment(): void {
+		$this->verify_request();
+
+		$name   = sanitize_text_field( $_POST['name'] ?? '' );
+		$config = $this->decode_json_post( 'config' );
+
+		if ( ! $name ) {
+			wp_send_json_error( [ 'message' => __( 'Segment name is required.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$segment  = new SegmentEngine();
+		$audience = new AudienceBuilder( $segment );
+		$id       = $audience->save_segment( $name, $config );
+
+		wp_send_json_success( [ 'segment_id' => $id ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_delete_segment — delete a saved segment.
+	 */
+	public function handle_tsh_wa_mkt_delete_segment(): void {
+		$this->verify_request();
+
+		$id       = absint( $_POST['segment_id'] ?? 0 );
+		$segment  = new SegmentEngine();
+		$audience = new AudienceBuilder( $segment );
+		$ok       = $audience->delete_segment( $id );
+
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Segment deleted.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Segment not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_estimate_audience — estimate audience size.
+	 */
+	public function handle_tsh_wa_mkt_estimate_audience(): void {
+		$this->verify_request();
+
+		$audience_config = $this->decode_json_post( 'audience_config' );
+
+		$segment   = new SegmentEngine();
+		$audience  = new AudienceBuilder( $segment );
+		$count     = $audience->estimate_count( $audience_config );
+
+		wp_send_json_success( [ 'count' => $count ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_mkt_dashboard — marketing dashboard overview stats.
+	 */
+	public function handle_tsh_wa_mkt_dashboard(): void {
+		$this->verify_request();
+
+		$days      = absint( $_POST['days'] ?? 30 );
+		$repo      = new CampaignRepository();
+		$analytics = new CampaignAnalytics( $repo );
+		$data      = $analytics->get_dashboard_stats( $days );
+
+		wp_send_json_success( $data );
 	}
 
 	// -------------------------------------------------------------------------

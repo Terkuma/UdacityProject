@@ -187,6 +187,22 @@ final class Activator {
 
 		$defaults['tsh_wa_admin_recipients'] = [];
 
+		// Phase 8 — Marketing & Broadcast Engine settings.
+		$defaults['tsh_wa_marketing_settings'] = [
+			'enabled'               => '1',
+			'default_batch_size'    => '100',
+			'default_msgs_per_min'  => '30',
+			'default_msgs_per_hour' => '1000',
+			'default_retry'         => '3',
+			'business_hours_start'  => '09:00',
+			'business_hours_end'    => '18:00',
+			'business_days'         => [ 1, 2, 3, 4, 5 ],  // Mon–Fri
+			'respect_business_hours'=> '0',
+			'default_coupon_prefix' => 'TSH',
+			'log_retention_days'    => '30',
+			'run_retention_days'    => '90',
+		];
+
 		// Phase 7 — Automation Engine settings.
 		$defaults['tsh_wa_automation_settings'] = [
 			'enabled'                => '1',

@@ -21,6 +21,7 @@ use TSH\WhatsAppNotify\Admin\Pages\Tools;
 use TSH\WhatsAppNotify\Admin\Pages\About;
 use TSH\WhatsAppNotify\Admin\Pages\Automation;
 use TSH\WhatsAppNotify\Admin\Pages\Inbox;
+use TSH\WhatsAppNotify\Admin\Pages\Marketing;
 
 /**
  * Class Menu
@@ -55,6 +56,7 @@ final class Menu {
 	public const SLUG_ABOUT      = 'tsh-whatsapp-notify-about';
 	public const SLUG_INBOX       = 'tsh-whatsapp-notify-inbox';
 	public const SLUG_AUTOMATION  = 'tsh-whatsapp-notify-automation';
+	public const SLUG_MARKETING   = 'tsh-whatsapp-notify-marketing';
 
 	/** @var Dashboard */
 	private Dashboard $dashboard;
@@ -86,6 +88,9 @@ final class Menu {
 	/** @var Automation */
 	private Automation $automation;
 
+	/** @var Marketing */
+	private Marketing $marketing;
+
 	/**
 	 * Constructor — registers menu hooks.
 	 */
@@ -100,6 +105,7 @@ final class Menu {
 		$this->about     = new About();
 		$this->inbox       = new Inbox();
 		$this->automation  = new Automation();
+		$this->marketing   = new Marketing();
 
 		add_action( 'admin_menu', [ $this, 'register_menus' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
@@ -222,6 +228,16 @@ final class Menu {
 			self::SLUG_AUTOMATION,
 			[ $this->automation, 'render' ]
 		);
+
+		// Marketing (Phase 8).
+		add_submenu_page(
+			self::SLUG_DASHBOARD,
+			__( 'Marketing — TSH WhatsApp Notify', 'tsh-whatsapp-notify' ),
+			__( 'Marketing', 'tsh-whatsapp-notify' ),
+			'manage_woocommerce',
+			self::SLUG_MARKETING,
+			[ $this->marketing, 'render' ]
+		);
 	}
 
 	// -------------------------------------------------------------------------
@@ -270,6 +286,44 @@ final class Menu {
 				[ 'jquery', 'tsh-wa-admin' ],
 				TSH_WA_VERSION,
 				true
+			);
+		}
+
+		// Phase 8 — Marketing-specific assets (only on the marketing page).
+		if ( str_contains( $hook_suffix, self::SLUG_MARKETING ) ) {
+			wp_enqueue_style(
+				'tsh-wa-marketing',
+				TSH_WA_URL . 'assets/css/marketing.css',
+				[ 'tsh-wa-admin' ],
+				TSH_WA_VERSION
+			);
+			wp_enqueue_script(
+				'tsh-wa-marketing',
+				TSH_WA_URL . 'assets/js/marketing.js',
+				[ 'jquery', 'tsh-wa-admin' ],
+				TSH_WA_VERSION,
+				true
+			);
+			wp_localize_script(
+				'tsh-wa-marketing',
+				'tshWaMarketing',
+				[
+					'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
+					'nonce'     => wp_create_nonce( \TSH\WhatsAppNotify\Admin\Ajax::NONCE_ACTION ),
+					'pluginUrl' => TSH_WA_URL,
+					'currency'  => get_woocommerce_currency_symbol(),
+					'i18n'      => [
+						'confirm_delete'   => __( 'Delete this campaign and all its data? This cannot be undone.', 'tsh-whatsapp-notify' ),
+						'confirm_cancel'   => __( 'Cancel this campaign? Queued messages will still be sent.', 'tsh-whatsapp-notify' ),
+						'confirm_archive'  => __( 'Archive this campaign?', 'tsh-whatsapp-notify' ),
+						'launching'        => __( 'Launching…', 'tsh-whatsapp-notify' ),
+						'saving'           => __( 'Saving…', 'tsh-whatsapp-notify' ),
+						'saved'            => __( 'Campaign saved.', 'tsh-whatsapp-notify' ),
+						'error'            => __( 'An error occurred. Please try again.', 'tsh-whatsapp-notify' ),
+						'preview_loading'  => __( 'Calculating audience…', 'tsh-whatsapp-notify' ),
+						'no_campaigns'     => __( 'No campaigns found.', 'tsh-whatsapp-notify' ),
+					],
+				]
 			);
 		}
 

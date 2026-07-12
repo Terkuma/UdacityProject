@@ -2,3 +2,4 @@
 - [TSH WA Phase 2 — API Layer](tsh-wa-phase2.md) — WhatsApp Cloud API engine complete; all files written; Phase 3 (WooCommerce order hooks) is next and must NOT start automatically.
 - [TSH WA Phase 5 — Meta Template Management](tsh-wa-phase5.md) — 16 Template classes, 2 new DB tables (5.0.0), 15 AJAX handlers, full Templates page + modal, CSS+JS; Phases 1–5 complete.
 - [TSH WA Phase 6 — Inbox / Conversation Hub](tsh-wa-phase6.md) — 17 Inbox classes, 2 new DB tables (6.0.0), 17 AJAX handlers, WhatsApp-style chat UI, webhook receiver, media downloader; Phases 1–6 complete.
+- [TSH WA Phase 8 — Marketing & Broadcast Engine](tsh-wa-phase8.md) — 15 Marketing classes, 4 new DB tables (8.0.0), 24 AJAX handlers, 6-step builder UI, analytics, A/B test, coupon engine; Phases 1–8 complete.

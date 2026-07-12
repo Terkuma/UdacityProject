@@ -35,7 +35,7 @@ final class Installer {
 	 * Current database schema version.
 	 * Increment this constant whenever tables are altered.
 	 */
-	public const DB_VERSION = '7.0.0';
+	public const DB_VERSION = '8.0.0';
 
 	/**
 	 * Run the installer — create or upgrade all tables.
@@ -437,6 +437,111 @@ final class Installer {
 			PRIMARY KEY  (id),
 			KEY          idx_run_id       (run_id),
 			KEY          idx_workflow_id  (workflow_id),
+			KEY          idx_level        (level),
+			KEY          idx_created_at   (created_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Campaigns table (Phase 8) — marketing campaign definitions
+		// ------------------------------------------------------------------
+		$campaigns = $wpdb->prefix . 'tsh_wa_campaigns';
+		$sql[] = "CREATE TABLE {$campaigns} (
+			id                BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			name              VARCHAR(200)         NOT NULL,
+			description       TEXT                          DEFAULT NULL,
+			status            VARCHAR(30)          NOT NULL DEFAULT 'draft'     COMMENT 'draft|scheduled|running|paused|completed|failed|cancelled|archived',
+			type              VARCHAR(30)          NOT NULL DEFAULT 'onetime'   COMMENT 'onetime|scheduled|recurring',
+			audience_config   LONGTEXT                      DEFAULT NULL        COMMENT 'JSON: segment rules',
+			template_id       BIGINT(20) UNSIGNED           DEFAULT NULL        COMMENT 'FK → tsh_wa_meta_templates.id (variant A)',
+			template_b_id     BIGINT(20) UNSIGNED           DEFAULT NULL        COMMENT 'FK → tsh_wa_meta_templates.id (variant B for A/B)',
+			ab_split_ratio    TINYINT(3) UNSIGNED  NOT NULL DEFAULT 50          COMMENT '% of audience receiving template B',
+			message_config    LONGTEXT                      DEFAULT NULL        COMMENT 'JSON: body, variables, media',
+			schedule_config   LONGTEXT                      DEFAULT NULL        COMMENT 'JSON: recurrence, day_of_week, time, timezone',
+			coupon_config     LONGTEXT                      DEFAULT NULL        COMMENT 'JSON: discount_type, amount, expiry_days, etc.',
+			throttle_config   LONGTEXT                      DEFAULT NULL        COMMENT 'JSON: msgs_per_minute, msgs_per_hour, batch_size, retry_attempts',
+			send_at           DATETIME                      DEFAULT NULL        COMMENT 'Scheduled send time (NULL = immediate)',
+			sent_at           DATETIME                      DEFAULT NULL        COMMENT 'Actual send start time',
+			completed_at      DATETIME                      DEFAULT NULL,
+			total_audience    BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			total_sent        BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			total_delivered   BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			total_read        BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			total_failed      BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			total_coupons     BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			created_by        BIGINT(20) UNSIGNED           DEFAULT NULL        COMMENT 'WP user ID',
+			created_at        DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at        DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY       (id),
+			KEY               idx_status      (status),
+			KEY               idx_type        (type),
+			KEY               idx_send_at     (send_at),
+			KEY               idx_created_at  (created_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Campaign runs table (Phase 8) — one row per execution instance
+		// ------------------------------------------------------------------
+		$campaign_runs = $wpdb->prefix . 'tsh_wa_campaign_runs';
+		$sql[] = "CREATE TABLE {$campaign_runs} (
+			id              BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			campaign_id     BIGINT(20) UNSIGNED  NOT NULL                   COMMENT 'FK → tsh_wa_campaigns.id',
+			status          VARCHAR(30)          NOT NULL DEFAULT 'pending'  COMMENT 'pending|running|completed|failed|paused',
+			started_at      DATETIME                      DEFAULT NULL,
+			completed_at    DATETIME                      DEFAULT NULL,
+			total_queued    BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			total_sent      BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			total_failed    BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			error_message   TEXT                          DEFAULT NULL,
+			batch_offset    BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0          COMMENT 'Resume offset into audience table',
+			context         LONGTEXT                      DEFAULT NULL        COMMENT 'JSON: stage, audience_total, etc.',
+			created_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY     (id),
+			KEY             idx_campaign_id  (campaign_id),
+			KEY             idx_status       (status),
+			KEY             idx_started_at   (started_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Campaign audience table (Phase 8) — per-recipient rows for each run
+		// ------------------------------------------------------------------
+		$campaign_audience = $wpdb->prefix . 'tsh_wa_campaign_audience';
+		$sql[] = "CREATE TABLE {$campaign_audience} (
+			id                BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			campaign_id       BIGINT(20) UNSIGNED  NOT NULL,
+			run_id            BIGINT(20) UNSIGNED  NOT NULL,
+			customer_id       BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			phone             VARCHAR(30)          NOT NULL DEFAULT '',
+			email             VARCHAR(200)                  DEFAULT '',
+			name              VARCHAR(200)                  DEFAULT '',
+			coupon_code       VARCHAR(100)                  DEFAULT NULL,
+			queue_id          BIGINT(20) UNSIGNED           DEFAULT NULL        COMMENT 'FK → tsh_wa_queue.id',
+			status            VARCHAR(30)          NOT NULL DEFAULT 'pending'   COMMENT 'pending|queued|sent|failed|skipped',
+			template_variant  VARCHAR(5)           NOT NULL DEFAULT 'a'         COMMENT 'a|b',
+			sent_at           DATETIME                      DEFAULT NULL,
+			error_message     TEXT                          DEFAULT NULL,
+			created_at        DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY       (id),
+			KEY               idx_campaign_run  (campaign_id, run_id),
+			KEY               idx_run_status    (run_id, status),
+			KEY               idx_customer_id   (customer_id),
+			KEY               idx_status        (status)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Campaign logs table (Phase 8) — per-campaign audit/event log
+		// ------------------------------------------------------------------
+		$campaign_logs = $wpdb->prefix . 'tsh_wa_campaign_logs';
+		$sql[] = "CREATE TABLE {$campaign_logs} (
+			id           BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			campaign_id  BIGINT(20) UNSIGNED  NOT NULL,
+			run_id       BIGINT(20) UNSIGNED           DEFAULT NULL,
+			level        VARCHAR(20)          NOT NULL DEFAULT 'info'   COMMENT 'info|warning|error|debug',
+			message      TEXT                 NOT NULL,
+			data         LONGTEXT                      DEFAULT NULL     COMMENT 'JSON extra data',
+			created_at   DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY  (id),
+			KEY          idx_campaign_id  (campaign_id),
+			KEY          idx_run_id       (run_id),
 			KEY          idx_level        (level),
 			KEY          idx_created_at   (created_at)
 		) ENGINE=InnoDB {$charset_collate};";
