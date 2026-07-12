@@ -35,7 +35,7 @@ final class Installer {
 	 * Current database schema version.
 	 * Increment this constant whenever tables are altered.
 	 */
-	public const DB_VERSION = '2.0.0';
+	public const DB_VERSION = '3.0.0';
 
 	/**
 	 * Run the installer — create or upgrade all tables.
@@ -176,6 +176,32 @@ final class Installer {
 			KEY             idx_success    (success),
 			KEY             idx_created_at (created_at),
 			KEY             idx_http_status(http_status)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ------------------------------------------------------------------
+		// Notifications table (Phase 3) — permanent dispatch record + dedup
+		// ------------------------------------------------------------------
+		$notifications = $wpdb->prefix . 'tsh_wa_notifications';
+		$sql[] = "CREATE TABLE {$notifications} (
+			id               BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			order_id         BIGINT(20) UNSIGNED  NOT NULL,
+			event            VARCHAR(50)          NOT NULL                   COMMENT 'Plugin event key',
+			recipient_phone  VARCHAR(30)          NOT NULL,
+			recipient_type   VARCHAR(20)          NOT NULL DEFAULT 'customer' COMMENT 'customer|admin',
+			recipient_name   VARCHAR(200)                  DEFAULT NULL,
+			template_slug    VARCHAR(200)                  DEFAULT NULL,
+			message_hash     VARCHAR(64)          NOT NULL                   COMMENT 'SHA-256 of message body for duplicate detection',
+			queue_id         BIGINT(20) UNSIGNED           DEFAULT NULL,
+			status           VARCHAR(20)          NOT NULL DEFAULT 'queued'  COMMENT 'queued|sent|failed|skipped',
+			error_message    TEXT                          DEFAULT NULL,
+			created_at       DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at       DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY      (id),
+			KEY              idx_order_id     (order_id),
+			KEY              idx_event        (event),
+			KEY              idx_status       (status),
+			KEY              idx_queue_id     (queue_id),
+			KEY              idx_dedup        (order_id, event, recipient_phone, status)
 		) ENGINE=InnoDB {$charset_collate};";
 
 		foreach ( $sql as $statement ) {

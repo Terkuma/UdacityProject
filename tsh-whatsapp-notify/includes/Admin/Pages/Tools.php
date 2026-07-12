@@ -80,12 +80,16 @@ final class Tools {
 		$tool = sanitize_key( wp_unslash( $_POST['tsh_wa_tool'] ) );
 
 		return match ( $tool ) {
-			'repair_db'            => $this->tool_repair_db(),
-			'clear_queue'          => $this->tool_clear_queue(),
-			'clear_logs'           => $this->tool_clear_logs(),
-			'clear_api_requests'   => $this->tool_clear_api_requests(),
-			'bust_health_cache'    => $this->tool_bust_health_cache(),
-			default                => [
+			'repair_db'              => $this->tool_repair_db(),
+			'clear_queue'            => $this->tool_clear_queue(),
+			'clear_logs'             => $this->tool_clear_logs(),
+			'clear_api_requests'     => $this->tool_clear_api_requests(),
+			'bust_health_cache'      => $this->tool_bust_health_cache(),
+			// Phase 3 — order tools.
+			'clear_notifications'    => $this->tool_clear_notifications(),
+			'retry_failed_queue'     => $this->tool_retry_failed_queue(),
+			'verify_wc_hooks'        => $this->tool_verify_wc_hooks(),
+			default                  => [
 				'type'    => 'error',
 				'message' => __( 'Unknown tool action.', 'tsh-whatsapp-notify' ),
 			],
@@ -167,6 +171,74 @@ final class Tools {
 		return [
 			'type'    => 'success',
 			'message' => __( 'API health cache cleared. The next dashboard load will trigger a fresh check.', 'tsh-whatsapp-notify' ),
+		];
+	}
+
+	// -------------------------------------------------------------------------
+	// Phase 3 — order tools
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Truncate the notifications log table.
+	 *
+	 * @return array<string, string>
+	 */
+	private function tool_clear_notifications(): array {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'tsh_wa_notifications';
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( "TRUNCATE TABLE `{$table}`" );
+
+		return [
+			'type'    => 'success',
+			'message' => __( 'Notification log cleared.', 'tsh-whatsapp-notify' ),
+		];
+	}
+
+	/**
+	 * Reset all permanently-failed queue items for a retry.
+	 *
+	 * @return array<string, string>
+	 */
+	private function tool_retry_failed_queue(): array {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'tsh_wa_queue';
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$count = $wpdb->query(
+			"UPDATE `{$table}` SET status = 'pending', attempts = 0, error_message = NULL WHERE status = 'failed'"
+		);
+
+		return [
+			'type'    => 'success',
+			/* translators: %d: count of items reset */
+			'message' => sprintf( __( '%d failed queue item(s) reset for retry.', 'tsh-whatsapp-notify' ), (int) $count ),
+		];
+	}
+
+	/**
+	 * Verify that WooCommerce order hooks are registered.
+	 *
+	 * @return array<string, string>
+	 */
+	private function tool_verify_wc_hooks(): array {
+		$hooks = [
+			'woocommerce_checkout_order_created',
+			'woocommerce_order_status_changed',
+			'woocommerce_payment_complete',
+			'woocommerce_new_order_note',
+		];
+
+		$results = [];
+		foreach ( $hooks as $hook ) {
+			$count       = has_action( $hook );
+			$results[]   = sprintf( '%s: %s', $hook, $count ? '✓' : '✗' );
+		}
+
+		return [
+			'type'    => 'info',
+			'message' => implode( ' | ', $results ),
 		];
 	}
 }

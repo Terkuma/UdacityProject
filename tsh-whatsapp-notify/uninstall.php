@@ -34,7 +34,8 @@ $tables = [
 	$wpdb->prefix . 'tsh_wa_queue',
 	$wpdb->prefix . 'tsh_wa_templates',
 	$wpdb->prefix . 'tsh_wa_settings',
-	$wpdb->prefix . 'tsh_wa_api_requests',  // Phase 2
+	$wpdb->prefix . 'tsh_wa_api_requests',   // Phase 2
+	$wpdb->prefix . 'tsh_wa_notifications',  // Phase 3
 ];
 
 foreach ( $tables as $table ) {
@@ -61,6 +62,9 @@ $options = [
 	'tsh_wa_activation_date',
 	// Phase 2 — API health history.
 	'tsh_wa_api_health_history',
+	// Phase 3 — WooCommerce order integration.
+	'tsh_wa_wc_events_settings',
+	'tsh_wa_admin_recipients',
 ];
 
 foreach ( $options as $option ) {

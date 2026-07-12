@@ -169,6 +169,24 @@ final class Activator {
 			],
 		];
 
+		// Phase 3 — WooCommerce Events + Admin Recipients.
+		$event_default = [
+			'enabled'          => '0',
+			'notify_admin'     => '1',
+			'notify_customer'  => '0',
+			'admin_template'   => '',
+			'customer_template'=> '',
+			'delay_seconds'    => '0',
+			'queue_immediately'=> '1',
+		];
+
+		$defaults['tsh_wa_wc_events_settings'] = array_fill_keys(
+			array_keys( \TSH\WhatsAppNotify\Orders\OrderStatusListener::ALL_EVENTS ),
+			$event_default
+		);
+
+		$defaults['tsh_wa_admin_recipients'] = [];
+
 		foreach ( $defaults as $option_name => $option_value ) {
 			if ( false === get_option( $option_name ) ) {
 				add_option( $option_name, $option_value, '', 'no' );

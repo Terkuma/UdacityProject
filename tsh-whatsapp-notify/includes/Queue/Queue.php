@@ -274,6 +274,133 @@ class Queue {
 	// Fetch helpers
 	// -------------------------------------------------------------------------
 
+	// -------------------------------------------------------------------------
+	// Queue processor helpers (Phase 3)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Fetch a batch of items that are ready to be sent.
+	 * Ordered by priority ASC, then scheduled_at ASC.
+	 *
+	 * @param int $batch_size Maximum number of items to return.
+	 * @return array<int, object>
+	 */
+	public function get_pending_batch( int $batch_size = 10 ): array {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'tsh_wa_queue';
+		$now   = current_time( 'mysql' );
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM `{$table}`
+				 WHERE status = 'pending'
+				   AND scheduled_at <= %s
+				 ORDER BY priority ASC, scheduled_at ASC
+				 LIMIT %d",
+				$now,
+				$batch_size
+			)
+		) ?: [];
+	}
+
+	/**
+	 * Lock a queue item for processing.
+	 * Atomically sets status = 'processing' and increments attempts.
+	 *
+	 * @param int $id Queue item ID.
+	 * @return bool True if the row was updated (i.e., we won the lock).
+	 */
+	public function lock_item( int $id ): bool {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'tsh_wa_queue';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `{$table}`
+				 SET status = 'processing', attempts = attempts + 1, updated_at = NOW()
+				 WHERE id = %d AND status = 'pending'",
+				$id
+			)
+		);
+
+		return (int) $rows === 1;
+	}
+
+	/**
+	 * Mark a queue item as successfully sent.
+	 *
+	 * @param int $id Queue item ID.
+	 * @return bool
+	 */
+	public function mark_sent( int $id ): bool {
+		global $wpdb;
+
+		$updated = $wpdb->update(
+			$wpdb->prefix . 'tsh_wa_queue',
+			[
+				'status'       => self::STATUS_SENT,
+				'processed_at' => current_time( 'mysql' ),
+			],
+			[ 'id' => $id ],
+			[ '%s', '%s' ],
+			[ '%d' ]
+		);
+
+		return (bool) $updated;
+	}
+
+	/**
+	 * Mark a queue item as permanently failed.
+	 *
+	 * @param int    $id    Queue item ID.
+	 * @param string $error Error message.
+	 * @return bool
+	 */
+	public function mark_failed( int $id, string $error = '' ): bool {
+		global $wpdb;
+
+		$updated = $wpdb->update(
+			$wpdb->prefix . 'tsh_wa_queue',
+			[
+				'status'        => self::STATUS_FAILED,
+				'error_message' => sanitize_textarea_field( $error ),
+				'processed_at'  => current_time( 'mysql' ),
+			],
+			[ 'id' => $id ],
+			[ '%s', '%s', '%s' ],
+			[ '%d' ]
+		);
+
+		return (bool) $updated;
+	}
+
+	/**
+	 * Reset a processing item back to pending for a retry attempt.
+	 *
+	 * @param int $id Queue item ID.
+	 * @return bool
+	 */
+	public function reset_for_retry( int $id ): bool {
+		global $wpdb;
+
+		$updated = $wpdb->update(
+			$wpdb->prefix . 'tsh_wa_queue',
+			[
+				'status'        => self::STATUS_PENDING,
+				'error_message' => null,
+			],
+			[ 'id' => $id ],
+			[ '%s', null ],
+			[ '%d' ]
+		);
+
+		return (bool) $updated;
+	}
+
 	/**
 	 * Get a single queue item by ID.
 	 *

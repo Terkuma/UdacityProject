@@ -66,6 +66,9 @@ final class Dashboard {
 		$health_monitor = new HealthMonitor();
 		$api_health     = $health_monitor->get_dashboard_status();
 
+		// Phase 3 — WooCommerce notification stats.
+		$wc_stats = $this->get_wc_stats();
+
 		return [
 			// Plugin meta.
 			'plugin_version'  => TSH_WA_VERSION,
@@ -108,6 +111,14 @@ final class Dashboard {
 
 			// System health checks.
 			'system_health' => $this->get_system_health(),
+
+			// Phase 3 — WooCommerce notification widgets.
+			'wc_orders_today'     => $wc_stats['orders_today'],
+			'wc_notifications_sent' => $wc_stats['notifications_sent'],
+			'wc_notifications_failed' => $wc_stats['notifications_failed'],
+			'wc_notifications_waiting' => $wc_stats['notifications_waiting'],
+			'wc_recent_notifications' => $wc_stats['recent_notifications'],
+			'url_orders' => admin_url( 'admin.php?page=tsh-whatsapp-notify-orders' ),
 
 			// Navigation links.
 			'url_settings' => admin_url( 'admin.php?page=tsh-whatsapp-notify-settings' ),
@@ -197,6 +208,60 @@ final class Dashboard {
 		];
 
 		return $checks;
+	}
+
+	// -------------------------------------------------------------------------
+	// Phase 3 — WooCommerce stats
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Gather WooCommerce notification statistics for the dashboard.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function get_wc_stats(): array {
+		global $wpdb;
+
+		$table    = $wpdb->prefix . 'tsh_wa_notifications';
+		$today    = current_time( 'Y-m-d' );
+		$exists   = (bool) $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" );
+
+		if ( ! $exists ) {
+			return [
+				'orders_today'           => 0,
+				'notifications_sent'     => 0,
+				'notifications_failed'   => 0,
+				'notifications_waiting'  => 0,
+				'recent_notifications'   => [],
+			];
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$sent    = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM `{$table}` WHERE status = 'sent' AND DATE(created_at) = %s", $today ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$failed  = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM `{$table}` WHERE status = 'failed' AND DATE(created_at) = %s", $today ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$waiting = (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$table}` WHERE status = 'queued'" );
+
+		// Orders with at least one notification today.
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$orders_today = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(DISTINCT order_id) FROM `{$table}` WHERE DATE(created_at) = %s", $today
+		) );
+
+		// Recent notifications.
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$recent = $wpdb->get_results(
+			"SELECT * FROM `{$table}` ORDER BY created_at DESC LIMIT 5"
+		) ?: [];
+
+		return [
+			'orders_today'           => $orders_today,
+			'notifications_sent'     => $sent,
+			'notifications_failed'   => $failed,
+			'notifications_waiting'  => $waiting,
+			'recent_notifications'   => $recent,
+		];
 	}
 
 	// -------------------------------------------------------------------------

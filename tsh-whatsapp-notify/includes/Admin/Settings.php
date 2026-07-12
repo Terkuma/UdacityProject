@@ -32,6 +32,7 @@ final class Settings {
 	private const TABS = [
 		'general'                => 'General',
 		'api'                    => 'WhatsApp API',
+		'wc_events'              => 'WooCommerce Events',
 		'admin_notifications'    => 'Admin Notifications',
 		'customer_notifications' => 'Customer Notifications',
 		'templates'              => 'Templates',
@@ -44,6 +45,7 @@ final class Settings {
 	private const OPTION_KEYS = [
 		'general'                => 'tsh_wa_general_settings',
 		'api'                    => 'tsh_wa_api_settings',
+		'wc_events'              => 'tsh_wa_wc_events_settings',
 		'admin_notifications'    => 'tsh_wa_admin_notification_settings',
 		'customer_notifications' => 'tsh_wa_customer_notification_settings',
 		'templates'              => 'tsh_wa_template_settings',
@@ -69,6 +71,7 @@ final class Settings {
 	public function register_settings(): void {
 		$this->register_general_settings();
 		$this->register_api_settings();
+		$this->register_wc_events_settings();
 		$this->register_admin_notification_settings();
 		$this->register_customer_notification_settings();
 		$this->register_template_settings();
@@ -637,6 +640,192 @@ final class Settings {
 			'debug_mode'               => isset( $input['debug_mode'] ) ? '1' : '0',
 			'remove_data_on_uninstall' => isset( $input['remove_data_on_uninstall'] ) ? '1' : '0',
 		];
+	}
+
+	// -------------------------------------------------------------------------
+	// WooCommerce Events
+	// -------------------------------------------------------------------------
+
+	private function register_wc_events_settings(): void {
+		$option = self::OPTION_KEYS['wc_events'];
+
+		register_setting( $option, $option, [
+			'sanitize_callback' => [ $this, 'sanitize_wc_events' ],
+		] );
+
+		// --- Section: Per-event configuration table -------------------------
+
+		add_settings_section(
+			'tsh_wa_wc_events_section',
+			__( 'Order Notification Events', 'tsh-whatsapp-notify' ),
+			static function (): void {
+				echo '<p>' . esc_html__( 'Configure which WooCommerce order events trigger WhatsApp notifications. Enable each event independently for admin and customer notifications.', 'tsh-whatsapp-notify' ) . '</p>';
+			},
+			$option
+		);
+
+		add_settings_field(
+			'events_table',
+			'',
+			[ $this, 'render_wc_events_table' ],
+			$option,
+			'tsh_wa_wc_events_section'
+		);
+
+		// --- Section: Country code default ----------------------------------
+
+		add_settings_section(
+			'tsh_wa_wc_country_section',
+			__( 'Customer Phone Settings', 'tsh-whatsapp-notify' ),
+			static function (): void {
+				echo '<p>' . esc_html__( 'Configure how customer phone numbers are resolved from WooCommerce billing data.', 'tsh-whatsapp-notify' ) . '</p>';
+			},
+			$option
+		);
+
+		add_settings_field(
+			'default_country',
+			__( 'Default Country Code', 'tsh-whatsapp-notify' ),
+			[ $this, 'render_select_field' ],
+			$option,
+			'tsh_wa_wc_country_section',
+			[
+				'option_key' => $option,
+				'field'      => 'default_country',
+				'default'    => 'NG',
+				'desc'       => __( 'Applied when the billing phone has no international prefix (+).', 'tsh-whatsapp-notify' ),
+				'options'    => [
+					'NG' => 'Nigeria (+234)',
+					'GH' => 'Ghana (+233)',
+					'KE' => 'Kenya (+254)',
+					'ZA' => 'South Africa (+27)',
+					'GB' => 'United Kingdom (+44)',
+					'US' => 'United States (+1)',
+				],
+			]
+		);
+	}
+
+	/**
+	 * Render the per-event configuration table for the WooCommerce Events tab.
+	 */
+	public function render_wc_events_table(): void {
+		$option  = self::OPTION_KEYS['wc_events'];
+		$current = get_option( $option, [] );
+
+		// Fetch available templates from the DB.
+		global $wpdb;
+		$templates_raw = $wpdb->get_results(
+			"SELECT slug, name FROM `{$wpdb->prefix}tsh_wa_templates` WHERE status = 'active' ORDER BY name ASC"
+		) ?: [];
+		$template_opts = [ '' => __( '— Default —', 'tsh-whatsapp-notify' ) ];
+		foreach ( $templates_raw as $t ) {
+			$template_opts[ $t->slug ] = $t->name;
+		}
+
+		$events = \TSH\WhatsAppNotify\Orders\OrderStatusListener::ALL_EVENTS;
+
+		echo '<div class="tsh-wa-events-table-wrap">';
+		echo '<table class="widefat tsh-wa-events-table">';
+		echo '<thead><tr>';
+		echo '<th>' . esc_html__( 'Event', 'tsh-whatsapp-notify' ) . '</th>';
+		echo '<th>' . esc_html__( 'Enabled', 'tsh-whatsapp-notify' ) . '</th>';
+		echo '<th>' . esc_html__( 'Notify Admin', 'tsh-whatsapp-notify' ) . '</th>';
+		echo '<th>' . esc_html__( 'Notify Customer', 'tsh-whatsapp-notify' ) . '</th>';
+		echo '<th>' . esc_html__( 'Admin Template', 'tsh-whatsapp-notify' ) . '</th>';
+		echo '<th>' . esc_html__( 'Customer Template', 'tsh-whatsapp-notify' ) . '</th>';
+		echo '<th>' . esc_html__( 'Delay (sec)', 'tsh-whatsapp-notify' ) . '</th>';
+		echo '</tr></thead><tbody>';
+
+		foreach ( $events as $key => $label ) {
+			$ev = $current[ $key ] ?? [];
+			$enabled       = ! empty( $ev['enabled'] )          && '1' === (string) $ev['enabled'];
+			$notify_admin  = ! empty( $ev['notify_admin'] )     && '1' === (string) $ev['notify_admin'];
+			$notify_cust   = ! empty( $ev['notify_customer'] )  && '1' === (string) $ev['notify_customer'];
+			$admin_tpl     = $ev['admin_template']    ?? '';
+			$cust_tpl      = $ev['customer_template'] ?? '';
+			$delay         = absint( $ev['delay_seconds'] ?? 0 );
+
+			$row_class = $enabled ? 'tsh-wa-event-row enabled' : 'tsh-wa-event-row disabled';
+			echo '<tr class="' . esc_attr( $row_class ) . '">';
+
+			// Event label.
+			echo '<td><strong>' . esc_html( $label ) . '</strong><br><code class="tsh-wa-event-key">' . esc_html( $key ) . '</code></td>';
+
+			// Enabled.
+			printf(
+				'<td class="tsh-wa-cb-cell"><input type="checkbox" name="%s[%s][enabled]" value="1" %s></td>',
+				esc_attr( $option ), esc_attr( $key ), checked( $enabled, true, false )
+			);
+
+			// Notify admin.
+			printf(
+				'<td class="tsh-wa-cb-cell"><input type="checkbox" name="%s[%s][notify_admin]" value="1" %s></td>',
+				esc_attr( $option ), esc_attr( $key ), checked( $notify_admin, true, false )
+			);
+
+			// Notify customer.
+			printf(
+				'<td class="tsh-wa-cb-cell"><input type="checkbox" name="%s[%s][notify_customer]" value="1" %s></td>',
+				esc_attr( $option ), esc_attr( $key ), checked( $notify_cust, true, false )
+			);
+
+			// Admin template select.
+			echo '<td>';
+			printf( '<select name="%s[%s][admin_template]">', esc_attr( $option ), esc_attr( $key ) );
+			foreach ( $template_opts as $val => $tlabel ) {
+				printf( '<option value="%s" %s>%s</option>', esc_attr( $val ), selected( $admin_tpl, $val, false ), esc_html( $tlabel ) );
+			}
+			echo '</select></td>';
+
+			// Customer template select.
+			echo '<td>';
+			printf( '<select name="%s[%s][customer_template]">', esc_attr( $option ), esc_attr( $key ) );
+			foreach ( $template_opts as $val => $tlabel ) {
+				printf( '<option value="%s" %s>%s</option>', esc_attr( $val ), selected( $cust_tpl, $val, false ), esc_html( $tlabel ) );
+			}
+			echo '</select></td>';
+
+			// Delay.
+			printf(
+				'<td><input type="number" name="%s[%s][delay_seconds]" value="%d" min="0" max="3600" class="small-text"> sec</td>',
+				esc_attr( $option ), esc_attr( $key ), $delay
+			);
+
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
+		echo '</div>';
+	}
+
+	/**
+	 * Sanitise the WooCommerce events settings.
+	 *
+	 * @param array<string, mixed> $input
+	 * @return array<string, mixed>
+	 */
+	public function sanitize_wc_events( array $input ): array {
+		$clean  = [];
+		$events = \TSH\WhatsAppNotify\Orders\OrderStatusListener::ALL_EVENTS;
+
+		foreach ( $events as $key => $label ) {
+			$ev = $input[ $key ] ?? [];
+			$clean[ $key ] = [
+				'enabled'          => ! empty( $ev['enabled'] ) ? '1' : '0',
+				'notify_admin'     => ! empty( $ev['notify_admin'] ) ? '1' : '0',
+				'notify_customer'  => ! empty( $ev['notify_customer'] ) ? '1' : '0',
+				'admin_template'   => sanitize_key( $ev['admin_template'] ?? '' ),
+				'customer_template'=> sanitize_key( $ev['customer_template'] ?? '' ),
+				'delay_seconds'    => (string) min( max( absint( $ev['delay_seconds'] ?? 0 ), 0 ), 3600 ),
+				'queue_immediately'=> '1',
+			];
+		}
+
+		// Also persist the country code (from a separate field, same option key).
+		$clean['default_country'] = sanitize_text_field( $input['default_country'] ?? 'NG' );
+
+		return $clean;
 	}
 
 	// -------------------------------------------------------------------------

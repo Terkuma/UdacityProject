@@ -15,9 +15,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use TSH\WhatsAppNotify\Admin\Ajax;
 use TSH\WhatsAppNotify\Admin\Menu;
+use TSH\WhatsAppNotify\Admin\OrderMetaBox;
 use TSH\WhatsAppNotify\API\HealthMonitor;
 use TSH\WhatsAppNotify\Cron\Scheduler;
 use TSH\WhatsAppNotify\Database\Installer;
+use TSH\WhatsAppNotify\Orders\OrderListener;
+use TSH\WhatsAppNotify\Orders\OrderStatusListener;
+use TSH\WhatsAppNotify\Queue\QueueProcessor;
 
 /**
  * Class Loader
@@ -107,11 +111,22 @@ final class Loader {
 		$this->components['health_monitor'] = new HealthMonitor();
 		$this->components['health_monitor']->register_hooks();
 
+		// Phase 3: Queue processor — hooks into cron actions to actually send messages.
+		$this->components['queue_processor'] = new QueueProcessor();
+
+		// Phase 3: Order status listener — fires the normalised tsh_wa_order_event action.
+		$this->components['order_status_listener'] = new OrderStatusListener();
+
+		// Phase 3: Order listener — hooks WC lifecycle events → OrderProcessor.
+		$this->components['order_listener'] = new OrderListener();
+
 		// Admin-only components — never loaded on the frontend.
 		if ( is_admin() ) {
 			$this->components['menu'] = new Menu();
 			// AJAX handlers must be registered in admin context.
 			$this->components['ajax'] = new Ajax();
+			// Phase 3: Order meta box + order actions + bulk actions.
+			$this->components['order_meta_box'] = new OrderMetaBox();
 		}
 	}
 

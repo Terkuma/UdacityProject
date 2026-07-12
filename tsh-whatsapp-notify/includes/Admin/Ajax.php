@@ -18,6 +18,10 @@ use TSH\WhatsAppNotify\API\HealthMonitor;
 use TSH\WhatsAppNotify\API\TokenManager;
 use TSH\WhatsAppNotify\Database\Installer;
 use TSH\WhatsAppNotify\Helpers\Helpers;
+use TSH\WhatsAppNotify\Orders\AdminRecipient;
+use TSH\WhatsAppNotify\Orders\OrderMessageBuilder;
+use TSH\WhatsAppNotify\Orders\OrderProcessor;
+use TSH\WhatsAppNotify\Orders\OrderQueueDispatcher;
 
 /**
  * Class Ajax
@@ -41,16 +45,187 @@ final class Ajax {
 	 */
 	public function __construct() {
 		$actions = [
+			// Phase 2 — API engine.
 			'tsh_wa_verify_connection',
 			'tsh_wa_send_test_message',
 			'tsh_wa_run_diagnostics',
 			'tsh_wa_refresh_health',
 			'tsh_wa_export_api_settings',
 			'tsh_wa_reset_api_settings',
+			// Phase 3 — Order integration.
+			'tsh_wa_get_order_preview',
+			'tsh_wa_queue_order_notification',
+			'tsh_wa_resend_order_notification',
+			'tsh_wa_save_admin_recipients',
+			'tsh_wa_get_order_notifications',
+			'tsh_wa_delete_admin_recipient',
 		];
 
 		foreach ( $actions as $action ) {
 			add_action( 'wp_ajax_' . $action, [ $this, 'handle_' . $action ] );
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Phase 3 — Order integration handlers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * AJAX: tsh_wa_get_order_preview
+	 * Returns rendered message previews for a given order + event.
+	 */
+	public function handle_tsh_wa_get_order_preview(): void {
+		$this->verify_request();
+
+		$order_id  = absint( $_POST['order_id'] ?? 0 );
+		$event_key = sanitize_key( $_POST['event_key'] ?? 'processing' );
+
+		if ( ! $order_id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid order ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$order = wc_get_order( $order_id );
+		if ( ! $order instanceof \WC_Order ) {
+			wp_send_json_error( [ 'message' => __( 'Order not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$builder       = new OrderMessageBuilder();
+		$event_settings = get_option( 'tsh_wa_wc_events_settings', [] );
+		$ev             = $event_settings[ $event_key ] ?? [];
+
+		// Resolve templates.
+		$customer_tpl = $this->resolve_preview_template( $ev['customer_template'] ?? '', $event_key, 'customer' );
+		$admin_tpl    = $this->resolve_preview_template( $ev['admin_template'] ?? '', $event_key, 'admin' );
+
+		$customer_preview = $builder->build( $customer_tpl, $order );
+		$admin_preview    = $builder->build( $admin_tpl, $order );
+
+		wp_send_json_success( [
+			'customer_message' => $customer_preview,
+			'admin_message'    => $admin_preview,
+			'char_count'       => mb_strlen( $customer_preview ),
+			'placeholders'     => $builder->get_placeholder_values( $order ),
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_queue_order_notification
+	 * Manually queues a notification for an order (duplicate protection active).
+	 */
+	public function handle_tsh_wa_queue_order_notification(): void {
+		$this->verify_request();
+
+		$order_id       = absint( $_POST['order_id'] ?? 0 );
+		$event_key      = sanitize_key( $_POST['event_key'] ?? 'status_changed' );
+		$recipient_type = sanitize_key( $_POST['recipient_type'] ?? 'all' );
+
+		if ( ! in_array( $recipient_type, [ 'customer', 'admin', 'all' ], true ) ) {
+			$recipient_type = 'all';
+		}
+
+		$processor = new OrderProcessor();
+		$result    = $processor->force_queue( $event_key, $order_id, $recipient_type );
+
+		if ( ! empty( $result['errors'] ) && 0 === $result['queued'] ) {
+			wp_send_json_error( [ 'message' => implode( ' ', $result['errors'] ) ] );
+		}
+
+		wp_send_json_success( [
+			'queued'  => $result['queued'],
+			'errors'  => $result['errors'],
+			/* translators: %d: number of notifications queued */
+			'message' => sprintf( _n( '%d notification queued.', '%d notifications queued.', $result['queued'], 'tsh-whatsapp-notify' ), $result['queued'] ),
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_resend_order_notification
+	 * Force-resends, bypassing duplicate protection.
+	 */
+	public function handle_tsh_wa_resend_order_notification(): void {
+		$this->verify_request();
+
+		$order_id       = absint( $_POST['order_id'] ?? 0 );
+		$event_key      = sanitize_key( $_POST['event_key'] ?? 'status_changed' );
+		$recipient_type = sanitize_key( $_POST['recipient_type'] ?? 'all' );
+
+		$processor = new OrderProcessor();
+		$result    = $processor->force_queue( $event_key, $order_id, $recipient_type );
+
+		wp_send_json_success( [
+			'queued'  => $result['queued'],
+			'errors'  => $result['errors'],
+			'message' => sprintf( _n( '%d notification re-queued.', '%d notifications re-queued.', $result['queued'], 'tsh-whatsapp-notify' ), $result['queued'] ),
+		] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_save_admin_recipients
+	 * Saves the full list of admin recipient numbers.
+	 */
+	public function handle_tsh_wa_save_admin_recipients(): void {
+		$this->verify_request();
+
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$raw        = wp_unslash( $_POST['recipients'] ?? '[]' );
+		$recipients = json_decode( $raw, true );
+
+		if ( ! is_array( $recipients ) ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid recipient data.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$mgr   = new AdminRecipient();
+		$saved = $mgr->save_recipients( $recipients );
+
+		if ( $saved ) {
+			wp_send_json_success( [
+				'count'   => count( $mgr->get_enabled_recipients() ),
+				'message' => __( 'Admin recipients saved.', 'tsh-whatsapp-notify' ),
+			] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Failed to save recipients.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_get_order_notifications
+	 * Returns the notification log for a specific order.
+	 */
+	public function handle_tsh_wa_get_order_notifications(): void {
+		$this->verify_request();
+
+		$order_id = absint( $_POST['order_id'] ?? 0 );
+
+		if ( ! $order_id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid order ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$dispatcher    = new OrderQueueDispatcher();
+		$notifications = $dispatcher->get_order_notifications( $order_id, 20 );
+
+		wp_send_json_success( [ 'notifications' => $notifications ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_delete_admin_recipient
+	 * Removes a single admin recipient by ID.
+	 */
+	public function handle_tsh_wa_delete_admin_recipient(): void {
+		$this->verify_request();
+
+		$recipient_id = sanitize_key( $_POST['recipient_id'] ?? '' );
+
+		if ( ! $recipient_id ) {
+			wp_send_json_error( [ 'message' => __( 'Invalid recipient ID.', 'tsh-whatsapp-notify' ) ] );
+		}
+
+		$mgr    = new AdminRecipient();
+		$deleted = $mgr->delete_recipient( $recipient_id );
+
+		if ( $deleted ) {
+			wp_send_json_success( [ 'message' => __( 'Recipient removed.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Recipient not found.', 'tsh-whatsapp-notify' ) ] );
 		}
 	}
 
