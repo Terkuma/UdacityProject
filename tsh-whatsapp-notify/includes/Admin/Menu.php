@@ -21,6 +21,7 @@ use TSH\WhatsAppNotify\Admin\Pages\Tools;
 use TSH\WhatsAppNotify\Admin\Pages\About;
 use TSH\WhatsAppNotify\Admin\Pages\Automation;
 use TSH\WhatsAppNotify\Admin\Pages\Inbox;
+use TSH\WhatsAppNotify\Admin\Pages\CRM as CRMPage;
 use TSH\WhatsAppNotify\Admin\Pages\Marketing;
 
 /**
@@ -57,6 +58,7 @@ final class Menu {
 	public const SLUG_INBOX       = 'tsh-whatsapp-notify-inbox';
 	public const SLUG_AUTOMATION  = 'tsh-whatsapp-notify-automation';
 	public const SLUG_MARKETING   = 'tsh-whatsapp-notify-marketing';
+	public const SLUG_CRM         = 'tsh-whatsapp-notify-crm';
 
 	/** @var Dashboard */
 	private Dashboard $dashboard;
@@ -91,6 +93,9 @@ final class Menu {
 	/** @var Marketing */
 	private Marketing $marketing;
 
+	/** @var CRMPage */
+	private CRMPage $crm;
+
 	/**
 	 * Constructor — registers menu hooks.
 	 */
@@ -106,6 +111,7 @@ final class Menu {
 		$this->inbox       = new Inbox();
 		$this->automation  = new Automation();
 		$this->marketing   = new Marketing();
+		$this->crm         = new CRMPage();
 
 		add_action( 'admin_menu', [ $this, 'register_menus' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
@@ -238,6 +244,16 @@ final class Menu {
 			self::SLUG_MARKETING,
 			[ $this->marketing, 'render' ]
 		);
+
+		// CRM (Phase 9).
+		add_submenu_page(
+			self::SLUG_DASHBOARD,
+			__( 'CRM — TSH WhatsApp Notify', 'tsh-whatsapp-notify' ),
+			__( 'CRM', 'tsh-whatsapp-notify' ),
+			'manage_woocommerce',
+			self::SLUG_CRM,
+			[ $this->crm, 'render' ]
+		);
 	}
 
 	// -------------------------------------------------------------------------
@@ -287,6 +303,49 @@ final class Menu {
 				TSH_WA_VERSION,
 				true
 			);
+		}
+
+		// Phase 9 — CRM-specific assets.
+		if ( str_contains( $hook_suffix, self::SLUG_CRM ) ) {
+			wp_enqueue_style(
+				'tsh-wa-crm',
+				TSH_WA_URL . 'assets/css/crm.css',
+				[ 'tsh-wa-admin' ],
+				TSH_WA_VERSION
+			);
+			wp_enqueue_script(
+				'tsh-wa-crm',
+				TSH_WA_URL . 'assets/js/crm.js',
+				[ 'jquery', 'tsh-wa-admin' ],
+				TSH_WA_VERSION,
+				true
+			);
+			wp_localize_script( 'tsh-wa-crm', 'tshWaCRM', [
+				'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
+				'nonce'      => wp_create_nonce( \TSH\WhatsAppNotify\Admin\Ajax::NONCE_ACTION ),
+				'pluginUrl'  => TSH_WA_URL,
+				'currency'   => get_woocommerce_currency_symbol(),
+				'lifecycle'  => \TSH\WhatsAppNotify\CRM\CustomerLifecycle::labels(),
+				'taskPriority' => \TSH\WhatsAppNotify\CRM\CustomerTasks::priority_labels(),
+				'taskStatus'   => \TSH\WhatsAppNotify\CRM\CustomerTasks::status_labels(),
+				'activityTypes'=> \TSH\WhatsAppNotify\CRM\CustomerActivity::type_labels(),
+				'activityIcons'=> \TSH\WhatsAppNotify\CRM\CustomerActivity::type_icons(),
+				'users'      => $this->get_wp_users_for_js(),
+				'settings'   => \TSH\WhatsAppNotify\CRM\CustomerSettings::get(),
+				'i18n'       => [
+					'confirm_delete'    => __( 'Delete this customer and all CRM data? This cannot be undone.', 'tsh-whatsapp-notify' ),
+					'confirm_merge'     => __( 'Merge these customers? The source customer will be deleted after merge.', 'tsh-whatsapp-notify' ),
+					'confirm_block'     => __( 'Block this customer? They will no longer receive WhatsApp messages.', 'tsh-whatsapp-notify' ),
+					'error'             => __( 'An error occurred. Please try again.', 'tsh-whatsapp-notify' ),
+					'loading'           => __( 'Loading…', 'tsh-whatsapp-notify' ),
+					'no_customers'      => __( 'No customers found.', 'tsh-whatsapp-notify' ),
+					'saved'             => __( 'Saved.', 'tsh-whatsapp-notify' ),
+					'customer_created'  => __( 'Customer created.', 'tsh-whatsapp-notify' ),
+					'note_added'        => __( 'Note added.', 'tsh-whatsapp-notify' ),
+					'task_completed'    => __( 'Task marked as completed.', 'tsh-whatsapp-notify' ),
+					'merged_ok'         => __( 'Customers merged successfully.', 'tsh-whatsapp-notify' ),
+				],
+			] );
 		}
 
 		// Phase 8 — Marketing-specific assets (only on the marketing page).
@@ -397,6 +456,12 @@ final class Menu {
 	 * @param string $hook_suffix
 	 * @return bool
 	 */
+	/** Get WP users list for task assignment JS. */
+	private function get_wp_users_for_js(): array {
+		$users = get_users( [ 'role__in' => [ 'administrator', 'shop_manager', 'editor' ], 'fields' => [ 'ID', 'display_name' ] ] );
+		return array_map( fn( $u ) => [ 'id' => $u->ID, 'name' => $u->display_name ], $users );
+	}
+
 	private function is_plugin_page( string $hook_suffix ): bool {
 		// Our own admin pages.
 		if ( str_contains( $hook_suffix, 'tsh-whatsapp-notify' ) ) {

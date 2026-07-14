@@ -187,6 +187,9 @@ final class Activator {
 
 		$defaults['tsh_wa_admin_recipients'] = [];
 
+		// Phase 9 — Customer CRM settings.
+		$defaults[ \TSH\WhatsAppNotify\CRM\CustomerSettings::OPTION_KEY ] = \TSH\WhatsAppNotify\CRM\CustomerSettings::DEFAULTS;
+
 		// Phase 8 — Marketing & Broadcast Engine settings.
 		$defaults['tsh_wa_marketing_settings'] = [
 			'enabled'               => '1',

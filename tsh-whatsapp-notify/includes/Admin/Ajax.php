@@ -35,6 +35,29 @@ use TSH\WhatsAppNotify\Automation\WorkflowRepository;
 use TSH\WhatsAppNotify\Automation\WorkflowRunner;
 use TSH\WhatsAppNotify\Automation\WorkflowValidator;
 use TSH\WhatsAppNotify\Inbox\InboxManager;
+use TSH\WhatsAppNotify\CRM\CustomerActivity;
+use TSH\WhatsAppNotify\CRM\CustomerAnalytics;
+use TSH\WhatsAppNotify\CRM\CustomerCampaigns;
+use TSH\WhatsAppNotify\CRM\CustomerConversations;
+use TSH\WhatsAppNotify\CRM\CustomerCoupons;
+use TSH\WhatsAppNotify\CRM\CustomerDuplicateResolver;
+use TSH\WhatsAppNotify\CRM\CustomerExport;
+use TSH\WhatsAppNotify\CRM\CustomerImport;
+use TSH\WhatsAppNotify\CRM\CustomerLifecycle;
+use TSH\WhatsAppNotify\CRM\CustomerLogger as CrmLogger;
+use TSH\WhatsAppNotify\CRM\CustomerManager;
+use TSH\WhatsAppNotify\CRM\CustomerMerge;
+use TSH\WhatsAppNotify\CRM\CustomerNotes;
+use TSH\WhatsAppNotify\CRM\CustomerOrders;
+use TSH\WhatsAppNotify\CRM\CustomerProfile;
+use TSH\WhatsAppNotify\CRM\CustomerRepository;
+use TSH\WhatsAppNotify\CRM\CustomerScoring;
+use TSH\WhatsAppNotify\CRM\CustomerSearch;
+use TSH\WhatsAppNotify\CRM\CustomerSegments;
+use TSH\WhatsAppNotify\CRM\CustomerSettings;
+use TSH\WhatsAppNotify\CRM\CustomerTags;
+use TSH\WhatsAppNotify\CRM\CustomerTasks;
+use TSH\WhatsAppNotify\CRM\CustomerTimeline;
 use TSH\WhatsAppNotify\Marketing\AudienceBuilder;
 use TSH\WhatsAppNotify\Marketing\BroadcastEngine;
 use TSH\WhatsAppNotify\Marketing\CampaignAnalytics;
@@ -182,6 +205,49 @@ final class Ajax {
 			'tsh_wa_flush_template_cache',
 			'tsh_wa_get_template_analytics',
 			'tsh_wa_get_template_stats',
+			// Phase 9 — Customer CRM & 360 Intelligence.
+			'tsh_wa_crm_dashboard',
+			'tsh_wa_crm_list',
+			'tsh_wa_crm_get',
+			'tsh_wa_crm_profile',
+			'tsh_wa_crm_create',
+			'tsh_wa_crm_update',
+			'tsh_wa_crm_delete',
+			'tsh_wa_crm_search',
+			'tsh_wa_crm_timeline',
+			'tsh_wa_crm_add_note',
+			'tsh_wa_crm_update_note',
+			'tsh_wa_crm_delete_note',
+			'tsh_wa_crm_pin_note',
+			'tsh_wa_crm_add_task',
+			'tsh_wa_crm_update_task',
+			'tsh_wa_crm_delete_task',
+			'tsh_wa_crm_complete_task',
+			'tsh_wa_crm_get_tasks',
+			'tsh_wa_crm_add_tag',
+			'tsh_wa_crm_remove_tag',
+			'tsh_wa_crm_create_tag',
+			'tsh_wa_crm_update_tag',
+			'tsh_wa_crm_delete_tag',
+			'tsh_wa_crm_get_tags',
+			'tsh_wa_crm_segments',
+			'tsh_wa_crm_create_segment',
+			'tsh_wa_crm_update_segment',
+			'tsh_wa_crm_delete_segment',
+			'tsh_wa_crm_segment_members',
+			'tsh_wa_crm_analytics',
+			'tsh_wa_crm_find_duplicates',
+			'tsh_wa_crm_merge',
+			'tsh_wa_crm_import',
+			'tsh_wa_crm_export',
+			'tsh_wa_crm_custom_fields',
+			'tsh_wa_crm_save_custom_field',
+			'tsh_wa_crm_delete_custom_field',
+			'tsh_wa_crm_save_settings',
+			'tsh_wa_crm_recalculate_scores',
+			'tsh_wa_crm_update_lifecycle',
+			'tsh_wa_crm_set_vip',
+			'tsh_wa_crm_block',
 		];
 
 		foreach ( $actions as $action ) {
@@ -2462,6 +2528,607 @@ final class Ajax {
 		$data      = $analytics->get_dashboard_stats( $days );
 
 		wp_send_json_success( $data );
+	}
+
+	// =========================================================================
+	// Phase 9 — Customer CRM handlers
+	// =========================================================================
+
+	/** Build a fully wired CustomerManager instance. */
+	private function make_crm_manager(): CustomerManager {
+		$repo     = new CustomerRepository();
+		$logger   = new CrmLogger();
+		$activity = new CustomerActivity( $repo );
+		$scoring  = new CustomerScoring( $repo );
+		$lifecycle= new CustomerLifecycle( $repo, $activity );
+		return new CustomerManager( $repo, $scoring, $lifecycle, $activity, $logger );
+	}
+
+	/**
+	 * AJAX: tsh_wa_crm_dashboard — CRM overview stats.
+	 */
+	public function handle_tsh_wa_crm_dashboard(): void {
+		$this->verify_request();
+		$days = absint( $_POST['days'] ?? 30 );
+		$repo = new CustomerRepository();
+		$data = ( new CustomerAnalytics( $repo ) )->get_dashboard( $days );
+		wp_send_json_success( $data );
+	}
+
+	/**
+	 * AJAX: tsh_wa_crm_list — paginated customer list.
+	 */
+	public function handle_tsh_wa_crm_list(): void {
+		$this->verify_request();
+
+		$filters = [
+			'search'    => sanitize_text_field( $_POST['search'] ?? '' ),
+			'lifecycle' => sanitize_key( $_POST['lifecycle'] ?? '' ),
+			'is_vip'    => isset( $_POST['is_vip'] ) ? (int) $_POST['is_vip'] : null,
+			'is_blocked'=> isset( $_POST['is_blocked'] ) ? (int) $_POST['is_blocked'] : null,
+			'orderby'   => sanitize_key( $_POST['orderby'] ?? 'created_at' ),
+			'order'     => sanitize_key( $_POST['order'] ?? 'DESC' ),
+			'per_page'  => min( 100, max( 1, absint( $_POST['per_page'] ?? 25 ) ) ),
+			'page'      => max( 1, absint( $_POST['page'] ?? 1 ) ),
+			'min_ltv'   => isset( $_POST['min_ltv'] ) ? (float) $_POST['min_ltv'] : null,
+			'max_ltv'   => isset( $_POST['max_ltv'] ) ? (float) $_POST['max_ltv'] : null,
+			'date_from' => sanitize_text_field( $_POST['date_from'] ?? '' ),
+			'date_to'   => sanitize_text_field( $_POST['date_to'] ?? '' ),
+		];
+
+		$result = ( new CustomerRepository() )->get_customers( $filters );
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: tsh_wa_crm_get — get raw customer record.
+	 */
+	public function handle_tsh_wa_crm_get(): void {
+		$this->verify_request();
+		$id       = absint( $_POST['customer_id'] ?? 0 );
+		$customer = ( new CustomerRepository() )->get_customer( $id );
+		if ( ! $customer ) {
+			wp_send_json_error( [ 'message' => __( 'Customer not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+		wp_send_json_success( [ 'customer' => $customer ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_crm_profile — get full 360° profile.
+	 */
+	public function handle_tsh_wa_crm_profile(): void {
+		$this->verify_request();
+		$id      = absint( $_POST['customer_id'] ?? 0 );
+		$refresh = ! empty( $_POST['refresh'] );
+		$repo    = new CustomerRepository();
+		$profile = new CustomerProfile(
+			$repo,
+			new CustomerOrders( $repo ),
+			new CustomerConversations( $repo ),
+			new CustomerCampaigns( $repo ),
+			new CustomerCoupons( $repo ),
+			new CustomerScoring( $repo )
+		);
+		$data = $profile->get( $id, $refresh );
+		if ( ! $data ) {
+			wp_send_json_error( [ 'message' => __( 'Customer not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+		wp_send_json_success( $data );
+	}
+
+	/**
+	 * AJAX: tsh_wa_crm_create — create a new customer.
+	 */
+	public function handle_tsh_wa_crm_create(): void {
+		$this->verify_request();
+
+		$data = [
+			'first_name'      => sanitize_text_field( $_POST['first_name'] ?? '' ),
+			'last_name'       => sanitize_text_field( $_POST['last_name']  ?? '' ),
+			'phone'           => sanitize_text_field( $_POST['phone'] ?? '' ),
+			'whatsapp_phone'  => sanitize_text_field( $_POST['whatsapp_phone'] ?? '' ),
+			'email'           => sanitize_email( $_POST['email'] ?? '' ),
+			'country'         => sanitize_text_field( $_POST['country'] ?? '' ),
+			'state'           => sanitize_text_field( $_POST['state'] ?? '' ),
+			'city'            => sanitize_text_field( $_POST['city'] ?? '' ),
+			'address'         => sanitize_textarea_field( $_POST['address'] ?? '' ),
+			'language'        => sanitize_text_field( $_POST['language'] ?? '' ),
+			'timezone'        => sanitize_text_field( $_POST['timezone'] ?? '' ),
+			'birthday'        => sanitize_text_field( $_POST['birthday'] ?? '' ) ?: null,
+			'anniversary'     => sanitize_text_field( $_POST['anniversary'] ?? '' ) ?: null,
+			'lifecycle'       => sanitize_key( $_POST['lifecycle'] ?? 'lead' ),
+			'is_vip'          => (int) ! empty( $_POST['is_vip'] ),
+			'marketing_consent'=> (int) ! empty( $_POST['marketing_consent'] ),
+			'is_subscribed'   => (int) ! empty( $_POST['is_subscribed'] ?? 1 ),
+			'source'          => sanitize_key( $_POST['source'] ?? 'manual' ),
+		];
+
+		if ( ! empty( $_POST['custom_fields'] ) ) {
+			$data['custom_fields'] = $this->decode_json_post( 'custom_fields' );
+		}
+
+		$result = $this->make_crm_manager()->create( $data );
+		if ( $result['success'] ) {
+			wp_send_json_success( $result );
+		} else {
+			wp_send_json_error( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_crm_update — update a customer.
+	 */
+	public function handle_tsh_wa_crm_update(): void {
+		$this->verify_request();
+
+		$id   = absint( $_POST['customer_id'] ?? 0 );
+		$data = [];
+
+		$text_fields = [ 'first_name', 'last_name', 'phone', 'whatsapp_phone', 'country', 'state', 'city', 'language', 'timezone', 'birthday', 'anniversary', 'avatar_url', 'source' ];
+		foreach ( $text_fields as $f ) {
+			if ( isset( $_POST[ $f ] ) ) $data[ $f ] = sanitize_text_field( $_POST[ $f ] );
+		}
+		if ( isset( $_POST['email'] ) )   $data['email']   = sanitize_email( $_POST['email'] );
+		if ( isset( $_POST['address'] ) ) $data['address'] = sanitize_textarea_field( $_POST['address'] );
+		if ( isset( $_POST['lifecycle'] ) ) $data['lifecycle'] = sanitize_key( $_POST['lifecycle'] );
+
+		$int_fields = [ 'is_vip', 'is_blocked', 'is_subscribed', 'marketing_consent' ];
+		foreach ( $int_fields as $f ) {
+			if ( isset( $_POST[ $f ] ) ) $data[ $f ] = (int) $_POST[ $f ];
+		}
+
+		if ( ! empty( $_POST['custom_fields'] ) ) {
+			$data['custom_fields'] = $this->decode_json_post( 'custom_fields' );
+		}
+
+		$result = $this->make_crm_manager()->update( $id, $data );
+		if ( $result['success'] ) {
+			wp_send_json_success( [ 'message' => __( 'Customer updated.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( $result );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_crm_delete — delete a customer.
+	 */
+	public function handle_tsh_wa_crm_delete(): void {
+		$this->verify_request();
+		$id = absint( $_POST['customer_id'] ?? 0 );
+		$ok = $this->make_crm_manager()->delete( $id );
+		if ( $ok ) {
+			wp_send_json_success( [ 'message' => __( 'Customer deleted.', 'tsh-whatsapp-notify' ) ] );
+		} else {
+			wp_send_json_error( [ 'message' => __( 'Customer not found.', 'tsh-whatsapp-notify' ) ] );
+		}
+	}
+
+	/**
+	 * AJAX: tsh_wa_crm_search — instant search.
+	 */
+	public function handle_tsh_wa_crm_search(): void {
+		$this->verify_request();
+		$query   = sanitize_text_field( $_POST['query'] ?? '' );
+		$context = sanitize_key( $_POST['context'] ?? 'global' );
+		$limit   = min( 50, max( 1, absint( $_POST['limit'] ?? 20 ) ) );
+		$repo    = new CustomerRepository();
+		$results = ( new CustomerSearch( $repo ) )->search( $query, $limit, $context );
+		wp_send_json_success( [ 'results' => $results ] );
+	}
+
+	/**
+	 * AJAX: tsh_wa_crm_timeline — get customer timeline.
+	 */
+	public function handle_tsh_wa_crm_timeline(): void {
+		$this->verify_request();
+		$customer_id = absint( $_POST['customer_id'] ?? 0 );
+		$limit       = min( 100, max( 1, absint( $_POST['limit'] ?? 50 ) ) );
+		$offset      = max( 0, absint( $_POST['offset'] ?? 0 ) );
+		$filter_type = sanitize_key( $_POST['filter_type'] ?? '' );
+
+		$repo     = new CustomerRepository();
+		$timeline = new CustomerTimeline(
+			$repo,
+			new CustomerOrders( $repo ),
+			new CustomerConversations( $repo ),
+			new CustomerCampaigns( $repo ),
+			new CustomerCoupons( $repo )
+		);
+
+		$filters = $filter_type ? [ 'type' => $filter_type ] : [];
+		$data    = $timeline->get( $customer_id, $limit, $offset, $filters );
+		wp_send_json_success( $data );
+	}
+
+	// ---- Notes ---------------------------------------------------------------
+
+	public function handle_tsh_wa_crm_add_note(): void {
+		$this->verify_request();
+		$customer_id = absint( $_POST['customer_id'] ?? 0 );
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerNotes( $repo, new CustomerActivity( $repo ) ) )->add( $customer_id, [
+			'content'    => wp_kses_post( wp_unslash( $_POST['content'] ?? '' ) ),
+			'is_pinned'  => (int) ! empty( $_POST['is_pinned'] ),
+			'is_private' => (int) ( $_POST['is_private'] ?? 1 ),
+		] );
+		if ( $result['success'] ) wp_send_json_success( $result );
+		else wp_send_json_error( $result );
+	}
+
+	public function handle_tsh_wa_crm_update_note(): void {
+		$this->verify_request();
+		$id   = absint( $_POST['note_id'] ?? 0 );
+		$repo = new CustomerRepository();
+		$result = ( new CustomerNotes( $repo, new CustomerActivity( $repo ) ) )->update( $id, [
+			'content'    => wp_kses_post( wp_unslash( $_POST['content'] ?? '' ) ),
+			'is_pinned'  => (int) ! empty( $_POST['is_pinned'] ),
+			'is_private' => (int) ( $_POST['is_private'] ?? 1 ),
+		] );
+		wp_send_json_success( $result );
+	}
+
+	public function handle_tsh_wa_crm_delete_note(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['note_id'] ?? 0 );
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerNotes( $repo, new CustomerActivity( $repo ) ) )->delete( $id );
+		wp_send_json_success( $result );
+	}
+
+	public function handle_tsh_wa_crm_pin_note(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['note_id'] ?? 0 );
+		$pinned = (bool) ( $_POST['pinned'] ?? false );
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerNotes( $repo, new CustomerActivity( $repo ) ) )->pin( $id, $pinned );
+		wp_send_json_success( $result );
+	}
+
+	// ---- Tasks ---------------------------------------------------------------
+
+	public function handle_tsh_wa_crm_add_task(): void {
+		$this->verify_request();
+		$customer_id = absint( $_POST['customer_id'] ?? 0 );
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerTasks( $repo, new CustomerActivity( $repo ) ) )->add( $customer_id, [
+			'title'       => sanitize_text_field( $_POST['title'] ?? '' ),
+			'description' => sanitize_textarea_field( $_POST['description'] ?? '' ),
+			'status'      => sanitize_key( $_POST['status'] ?? 'pending' ),
+			'priority'    => sanitize_key( $_POST['priority'] ?? 'medium' ),
+			'due_at'      => sanitize_text_field( $_POST['due_at'] ?? '' ) ?: null,
+			'assigned_to' => absint( $_POST['assigned_to'] ?? get_current_user_id() ),
+			'is_recurring'=> (int) ! empty( $_POST['is_recurring'] ),
+			'recurrence_config' => $this->decode_json_post( 'recurrence_config' ),
+		] );
+		if ( $result['success'] ) wp_send_json_success( $result );
+		else wp_send_json_error( $result );
+	}
+
+	public function handle_tsh_wa_crm_update_task(): void {
+		$this->verify_request();
+		$id   = absint( $_POST['task_id'] ?? 0 );
+		$repo = new CustomerRepository();
+		$result = ( new CustomerTasks( $repo, new CustomerActivity( $repo ) ) )->update( $id, [
+			'title'       => sanitize_text_field( $_POST['title'] ?? '' ),
+			'description' => sanitize_textarea_field( $_POST['description'] ?? '' ),
+			'status'      => sanitize_key( $_POST['status'] ?? '' ),
+			'priority'    => sanitize_key( $_POST['priority'] ?? '' ),
+			'due_at'      => sanitize_text_field( $_POST['due_at'] ?? '' ) ?: null,
+			'assigned_to' => absint( $_POST['assigned_to'] ?? 0 ) ?: null,
+		] );
+		wp_send_json_success( $result );
+	}
+
+	public function handle_tsh_wa_crm_delete_task(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['task_id'] ?? 0 );
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerTasks( $repo, new CustomerActivity( $repo ) ) )->delete( $id );
+		wp_send_json_success( $result );
+	}
+
+	public function handle_tsh_wa_crm_complete_task(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['task_id'] ?? 0 );
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerTasks( $repo, new CustomerActivity( $repo ) ) )->complete( $id );
+		wp_send_json_success( $result );
+	}
+
+	public function handle_tsh_wa_crm_get_tasks(): void {
+		$this->verify_request();
+		$args = [
+			'status'      => sanitize_key( $_POST['status']      ?? '' ),
+			'assigned_to' => absint( $_POST['assigned_to']       ?? 0 ) ?: null,
+			'per_page'    => min( 100, absint( $_POST['per_page'] ?? 25 ) ),
+			'page'        => max( 1, absint( $_POST['page']       ?? 1 ) ),
+		];
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerTasks( $repo, new CustomerActivity( $repo ) ) )->list_all( $args );
+		wp_send_json_success( $result );
+	}
+
+	// ---- Tags ----------------------------------------------------------------
+
+	public function handle_tsh_wa_crm_get_tags(): void {
+		$this->verify_request();
+		wp_send_json_success( [ 'tags' => ( new CustomerRepository() )->get_all_tags() ] );
+	}
+
+	public function handle_tsh_wa_crm_create_tag(): void {
+		$this->verify_request();
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerTags( $repo, new CustomerActivity( $repo ) ) )->create(
+			sanitize_text_field( $_POST['name'] ?? '' ),
+			sanitize_hex_color( $_POST['color'] ?? '#6b7280' ) ?: '#6b7280',
+			sanitize_key( $_POST['type'] ?? 'manual' ),
+			sanitize_textarea_field( $_POST['description'] ?? '' )
+		);
+		if ( $result['success'] ) wp_send_json_success( $result );
+		else wp_send_json_error( $result );
+	}
+
+	public function handle_tsh_wa_crm_update_tag(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['tag_id'] ?? 0 );
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerTags( $repo, new CustomerActivity( $repo ) ) )->update( $id, [
+			'name'        => sanitize_text_field( $_POST['name'] ?? '' ),
+			'color'       => sanitize_hex_color( $_POST['color'] ?? '#6b7280' ) ?: '#6b7280',
+			'description' => sanitize_textarea_field( $_POST['description'] ?? '' ),
+		] );
+		wp_send_json_success( $result );
+	}
+
+	public function handle_tsh_wa_crm_delete_tag(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['tag_id'] ?? 0 );
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerTags( $repo, new CustomerActivity( $repo ) ) )->delete( $id );
+		wp_send_json_success( $result );
+	}
+
+	public function handle_tsh_wa_crm_add_tag(): void {
+		$this->verify_request();
+		$customer_id = absint( $_POST['customer_id'] ?? 0 );
+		$tag_id      = absint( $_POST['tag_id']      ?? 0 );
+		$repo        = new CustomerRepository();
+		$result      = ( new CustomerTags( $repo, new CustomerActivity( $repo ) ) )->add_to_customer( $customer_id, $tag_id );
+		if ( $result['success'] ) wp_send_json_success( $result );
+		else wp_send_json_error( $result );
+	}
+
+	public function handle_tsh_wa_crm_remove_tag(): void {
+		$this->verify_request();
+		$customer_id = absint( $_POST['customer_id'] ?? 0 );
+		$tag_id      = absint( $_POST['tag_id']      ?? 0 );
+		$repo        = new CustomerRepository();
+		$result      = ( new CustomerTags( $repo, new CustomerActivity( $repo ) ) )->remove_from_customer( $customer_id, $tag_id );
+		wp_send_json_success( $result );
+	}
+
+	// ---- Segments ------------------------------------------------------------
+
+	public function handle_tsh_wa_crm_segments(): void {
+		$this->verify_request();
+		$repo   = new CustomerRepository();
+		$segs   = ( new CustomerSegments( $repo ) )->list();
+		$fields = ( new CustomerSegments( $repo ) )->get_rule_fields();
+		wp_send_json_success( [ 'segments' => $segs, 'rule_fields' => $fields ] );
+	}
+
+	public function handle_tsh_wa_crm_create_segment(): void {
+		$this->verify_request();
+		$repo  = new CustomerRepository();
+		$id    = ( new CustomerSegments( $repo ) )->create(
+			sanitize_text_field( $_POST['name'] ?? '' ),
+			sanitize_textarea_field( $_POST['description'] ?? '' ),
+			$this->decode_json_post( 'rules' ) ?? []
+		);
+		if ( $id ) wp_send_json_success( [ 'segment_id' => $id ] );
+		else wp_send_json_error( [ 'message' => __( 'Failed to create segment.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	public function handle_tsh_wa_crm_update_segment(): void {
+		$this->verify_request();
+		$id   = absint( $_POST['segment_id'] ?? 0 );
+		$repo = new CustomerRepository();
+		$data = [
+			'name'        => sanitize_text_field( $_POST['name'] ?? '' ),
+			'description' => sanitize_textarea_field( $_POST['description'] ?? '' ),
+			'rules'       => $this->decode_json_post( 'rules' ) ?? [],
+		];
+		$ok = ( new CustomerSegments( $repo ) )->update( $id, $data );
+		wp_send_json_success( [ 'success' => $ok ] );
+	}
+
+	public function handle_tsh_wa_crm_delete_segment(): void {
+		$this->verify_request();
+		$id   = absint( $_POST['segment_id'] ?? 0 );
+		$repo = new CustomerRepository();
+		$ok   = ( new CustomerSegments( $repo ) )->delete( $id );
+		wp_send_json_success( [ 'success' => $ok ] );
+	}
+
+	public function handle_tsh_wa_crm_segment_members(): void {
+		$this->verify_request();
+		$segment_id = absint( $_POST['segment_id'] ?? 0 );
+		$per_page   = min( 100, max( 1, absint( $_POST['per_page'] ?? 25 ) ) );
+		$page       = max( 1, absint( $_POST['page'] ?? 1 ) );
+		$repo       = new CustomerRepository();
+		$result     = ( new CustomerSegments( $repo ) )->get_members( $segment_id, $per_page, $page );
+		wp_send_json_success( $result );
+	}
+
+	// ---- Analytics -----------------------------------------------------------
+
+	public function handle_tsh_wa_crm_analytics(): void {
+		$this->verify_request();
+		$days        = absint( $_POST['days'] ?? 30 );
+		$customer_id = absint( $_POST['customer_id'] ?? 0 );
+		$type        = sanitize_key( $_POST['type'] ?? 'dashboard' );
+
+		$repo      = new CustomerRepository();
+		$analytics = new CustomerAnalytics( $repo );
+
+		$data = match ( $type ) {
+			'dashboard'   => $analytics->get_dashboard( $days ),
+			'growth'      => [ 'growth'     => $analytics->get_growth_chart( $days ) ],
+			'lifecycle'   => [ 'lifecycle'  => $analytics->get_lifecycle_chart() ],
+			'ltv'         => [ 'ltv'        => $analytics->get_ltv_distribution() ],
+			'orders'      => [ 'orders'     => $analytics->get_order_frequency() ],
+			'health'      => [ 'health'     => $analytics->get_health_distribution() ],
+			'countries'   => [ 'countries'  => $analytics->get_country_distribution() ],
+			'customer'    => $customer_id ? $analytics->get_customer_stats( $customer_id ) : [],
+			default       => $analytics->get_dashboard( $days ),
+		};
+
+		wp_send_json_success( $data );
+	}
+
+	// ---- Duplicates & Merge --------------------------------------------------
+
+	public function handle_tsh_wa_crm_find_duplicates(): void {
+		$this->verify_request();
+		$repo   = new CustomerRepository();
+		$result = ( new CustomerDuplicateResolver( $repo ) )->find();
+		wp_send_json_success( $result );
+	}
+
+	public function handle_tsh_wa_crm_merge(): void {
+		$this->verify_request();
+		$source_id = absint( $_POST['source_id'] ?? 0 );
+		$target_id = absint( $_POST['target_id'] ?? 0 );
+		$repo      = new CustomerRepository();
+		$result    = ( new CustomerMerge(
+			$repo,
+			new CustomerActivity( $repo ),
+			new CustomerScoring( $repo )
+		) )->merge( $source_id, $target_id );
+		if ( $result['success'] ) wp_send_json_success( $result );
+		else wp_send_json_error( $result );
+	}
+
+	// ---- Import / Export -----------------------------------------------------
+
+	public function handle_tsh_wa_crm_import(): void {
+		$this->verify_request();
+		$format   = sanitize_key( $_POST['format'] ?? 'csv' );
+		$conflict = sanitize_key( $_POST['conflict'] ?? 'skip' );
+		$content  = wp_unslash( $_POST['content'] ?? '' );
+		$repo     = new CustomerRepository();
+		$manager  = $this->make_crm_manager();
+		$scoring  = new CustomerScoring( $repo );
+		$importer = new CustomerImport( $repo, $manager, $scoring );
+
+		$result = $format === 'json' ? $importer->from_json( $content, $conflict ) : $importer->from_csv( $content, $conflict );
+		wp_send_json_success( $result );
+	}
+
+	public function handle_tsh_wa_crm_export(): void {
+		$this->verify_request();
+		$format = sanitize_key( $_POST['format'] ?? 'csv' );
+		$filters = [
+			'lifecycle'  => sanitize_key( $_POST['lifecycle']   ?? '' ),
+			'is_vip'     => isset( $_POST['is_vip'] ) ? (int) $_POST['is_vip'] : null,
+			'is_blocked' => isset( $_POST['is_blocked'] ) ? (int) $_POST['is_blocked'] : null,
+		];
+		$repo     = new CustomerRepository();
+		$exporter = new CustomerExport( $repo );
+		$content  = $format === 'json' ? $exporter->to_json( $filters ) : $exporter->to_csv( $filters );
+		wp_send_json_success( [ 'content' => $content, 'format' => $format ] );
+	}
+
+	// ---- Custom Fields -------------------------------------------------------
+
+	public function handle_tsh_wa_crm_custom_fields(): void {
+		$this->verify_request();
+		wp_send_json_success( [ 'fields' => ( new CustomerRepository() )->get_custom_fields() ] );
+	}
+
+	public function handle_tsh_wa_crm_save_custom_field(): void {
+		$this->verify_request();
+		$repo = new CustomerRepository();
+		$id   = $repo->insert_custom_field( [
+			'field_key'   => sanitize_key( $_POST['field_key']   ?? '' ),
+			'field_label' => sanitize_text_field( $_POST['field_label'] ?? '' ),
+			'field_type'  => sanitize_key( $_POST['field_type']  ?? 'text' ),
+			'options'     => $this->decode_json_post( 'options' ) ?? [],
+			'is_required' => (int) ! empty( $_POST['is_required'] ),
+			'sort_order'  => absint( $_POST['sort_order'] ?? 0 ),
+		] );
+		if ( $id ) wp_send_json_success( [ 'field_id' => $id ] );
+		else wp_send_json_error( [ 'message' => __( 'Failed to save custom field.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	public function handle_tsh_wa_crm_delete_custom_field(): void {
+		$this->verify_request();
+		$id = absint( $_POST['field_id'] ?? 0 );
+		$ok = ( new CustomerRepository() )->delete_custom_field( $id );
+		wp_send_json_success( [ 'success' => $ok ] );
+	}
+
+	// ---- Settings & Lifecycle ------------------------------------------------
+
+	public function handle_tsh_wa_crm_save_settings(): void {
+		$this->verify_request();
+		$data = [
+			'vip_ltv_threshold'   => (float) ( $_POST['vip_ltv_threshold']   ?? 500 ),
+			'vip_order_threshold' => (int)   ( $_POST['vip_order_threshold'] ?? 5 ),
+			'inactive_days'       => (int)   ( $_POST['inactive_days']       ?? 90 ),
+			'dormant_days'        => (int)   ( $_POST['dormant_days']        ?? 60 ),
+			'timeline_retention'  => (int)   ( $_POST['timeline_retention']  ?? 365 ),
+			'task_reminder_hours' => (int)   ( $_POST['task_reminder_hours'] ?? 24 ),
+			'auto_sync_woo'       => ! empty( $_POST['auto_sync_woo'] ),
+			'auto_score_on_order' => ! empty( $_POST['auto_score_on_order'] ),
+			'auto_lifecycle_cron' => ! empty( $_POST['auto_lifecycle_cron'] ),
+		];
+		$ok = CustomerSettings::save( $data );
+		wp_send_json_success( [ 'success' => $ok, 'settings' => CustomerSettings::get() ] );
+	}
+
+	public function handle_tsh_wa_crm_recalculate_scores(): void {
+		$this->verify_request();
+		$customer_id = absint( $_POST['customer_id'] ?? 0 );
+		$repo        = new CustomerRepository();
+		$scoring     = new CustomerScoring( $repo );
+
+		if ( $customer_id ) {
+			$scores = $scoring->calculate( $customer_id );
+			wp_send_json_success( [ 'scores' => $scores ] );
+		} else {
+			$chunk     = min( 200, absint( $_POST['chunk'] ?? 100 ) );
+			$offset    = absint( $_POST['offset'] ?? 0 );
+			$processed = $scoring->recalculate_all( $chunk, $offset );
+			wp_send_json_success( [ 'processed' => $processed ] );
+		}
+	}
+
+	public function handle_tsh_wa_crm_update_lifecycle(): void {
+		$this->verify_request();
+		$id        = absint( $_POST['customer_id'] ?? 0 );
+		$lifecycle = sanitize_key( $_POST['lifecycle'] ?? '' );
+		$result    = $this->make_crm_manager()->update_lifecycle( $id, $lifecycle );
+		if ( $result['success'] ) wp_send_json_success( [ 'message' => __( 'Lifecycle updated.', 'tsh-whatsapp-notify' ) ] );
+		else wp_send_json_error( [ 'message' => __( 'Invalid lifecycle value.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	public function handle_tsh_wa_crm_set_vip(): void {
+		$this->verify_request();
+		$id     = absint( $_POST['customer_id'] ?? 0 );
+		$vip    = (bool) ( $_POST['is_vip'] ?? false );
+		$result = $this->make_crm_manager()->set_vip( $id, $vip );
+		if ( $result['success'] ) wp_send_json_success( [ 'message' => $vip ? __( 'VIP granted.', 'tsh-whatsapp-notify' ) : __( 'VIP revoked.', 'tsh-whatsapp-notify' ) ] );
+		else wp_send_json_error( [ 'message' => __( 'Operation failed.', 'tsh-whatsapp-notify' ) ] );
+	}
+
+	public function handle_tsh_wa_crm_block(): void {
+		$this->verify_request();
+		$id      = absint( $_POST['customer_id'] ?? 0 );
+		$blocked = (bool) ( $_POST['is_blocked'] ?? false );
+		$result  = $this->make_crm_manager()->set_blocked( $id, $blocked );
+		if ( $result['success'] ) wp_send_json_success( [ 'message' => $blocked ? __( 'Customer blocked.', 'tsh-whatsapp-notify' ) : __( 'Customer unblocked.', 'tsh-whatsapp-notify' ) ] );
+		else wp_send_json_error( [ 'message' => __( 'Operation failed.', 'tsh-whatsapp-notify' ) ] );
 	}
 
 	// -------------------------------------------------------------------------

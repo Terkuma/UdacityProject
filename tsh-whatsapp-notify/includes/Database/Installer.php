@@ -35,7 +35,7 @@ final class Installer {
 	 * Current database schema version.
 	 * Increment this constant whenever tables are altered.
 	 */
-	public const DB_VERSION = '8.0.0';
+	public const DB_VERSION = '9.0.0';
 
 	/**
 	 * Run the installer — create or upgrade all tables.
@@ -544,6 +544,204 @@ final class Installer {
 			KEY          idx_run_id       (run_id),
 			KEY          idx_level        (level),
 			KEY          idx_created_at   (created_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// ==================================================================
+		// CRM tables (Phase 9)
+		// ==================================================================
+
+		// Main CRM customer records
+		$customers = $wpdb->prefix . 'tsh_wa_customers';
+		$sql[] = "CREATE TABLE {$customers} (
+			id                  BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			wp_user_id          BIGINT(20) UNSIGNED           DEFAULT NULL        COMMENT 'FK → wp_users.ID',
+			wc_customer_id      BIGINT(20) UNSIGNED           DEFAULT NULL        COMMENT 'WooCommerce customer ID',
+			phone               VARCHAR(30)          NOT NULL DEFAULT ''          COMMENT 'Primary contact phone',
+			whatsapp_phone      VARCHAR(30)          NOT NULL DEFAULT ''          COMMENT 'WhatsApp number (may differ from phone)',
+			email               VARCHAR(200)                  DEFAULT NULL,
+			first_name          VARCHAR(100)         NOT NULL DEFAULT '',
+			last_name           VARCHAR(100)         NOT NULL DEFAULT '',
+			full_name           VARCHAR(200)         NOT NULL DEFAULT '',
+			avatar_url          VARCHAR(500)                  DEFAULT NULL,
+			country             VARCHAR(5)           NOT NULL DEFAULT '',
+			state               VARCHAR(100)         NOT NULL DEFAULT '',
+			city                VARCHAR(100)         NOT NULL DEFAULT '',
+			address             TEXT                          DEFAULT NULL,
+			language            VARCHAR(10)          NOT NULL DEFAULT '',
+			timezone            VARCHAR(50)          NOT NULL DEFAULT '',
+			birthday            DATE                          DEFAULT NULL,
+			anniversary         DATE                          DEFAULT NULL,
+			lifecycle           VARCHAR(30)          NOT NULL DEFAULT 'lead'      COMMENT 'lead|new|active|returning|vip|dormant|inactive|lost',
+			is_vip              TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0,
+			vip_manual          TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0           COMMENT 'Manual VIP override',
+			is_blocked          TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0,
+			is_subscribed       TINYINT(1) UNSIGNED  NOT NULL DEFAULT 1,
+			marketing_consent   TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0,
+			communication_prefs LONGTEXT                      DEFAULT NULL        COMMENT 'JSON: preferred channel, times, etc.',
+			tags                LONGTEXT                      DEFAULT NULL        COMMENT 'JSON array of tag IDs',
+			custom_fields       LONGTEXT                      DEFAULT NULL        COMMENT 'JSON key=>value custom fields',
+			total_orders        INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			completed_orders    INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			cancelled_orders    INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			refunded_orders     INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			pending_orders      INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			lifetime_value      DECIMAL(15,4)        NOT NULL DEFAULT 0,
+			avg_order_value     DECIMAL(15,4)        NOT NULL DEFAULT 0,
+			health_score        DECIMAL(5,2)         NOT NULL DEFAULT 0,
+			rfm_recency         TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0,
+			rfm_frequency       TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0,
+			rfm_monetary        DECIMAL(15,4)        NOT NULL DEFAULT 0,
+			first_order_at      DATETIME                      DEFAULT NULL,
+			last_order_at       DATETIME                      DEFAULT NULL,
+			last_message_at     DATETIME                      DEFAULT NULL,
+			last_campaign_at    DATETIME                      DEFAULT NULL,
+			last_coupon_at      DATETIME                      DEFAULT NULL,
+			notes_count         INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			tasks_count         INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			source              VARCHAR(50)          NOT NULL DEFAULT 'manual',
+			created_at          DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at          DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY         (id),
+			KEY idx_phone       (phone),
+			KEY idx_wa_phone    (whatsapp_phone),
+			KEY idx_email       (email(100)),
+			KEY idx_lifecycle   (lifecycle),
+			KEY idx_is_vip      (is_vip),
+			KEY idx_is_blocked  (is_blocked),
+			KEY idx_ltv         (lifetime_value),
+			KEY idx_health      (health_score),
+			KEY idx_wp_user     (wp_user_id),
+			KEY idx_wc_customer (wc_customer_id),
+			KEY idx_created_at  (created_at),
+			KEY idx_last_order  (last_order_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// Customer notes
+		$customer_notes = $wpdb->prefix . 'tsh_wa_customer_notes';
+		$sql[] = "CREATE TABLE {$customer_notes} (
+			id              BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			customer_id     BIGINT(20) UNSIGNED  NOT NULL,
+			user_id         BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0 COMMENT 'WP user who wrote the note',
+			content         LONGTEXT             NOT NULL,
+			is_pinned       TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0,
+			is_private      TINYINT(1) UNSIGNED  NOT NULL DEFAULT 1,
+			attachment_url  VARCHAR(500)                  DEFAULT NULL,
+			created_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at      DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY     (id),
+			KEY idx_customer_id (customer_id),
+			KEY idx_is_pinned   (is_pinned)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// Customer tasks
+		$customer_tasks = $wpdb->prefix . 'tsh_wa_customer_tasks';
+		$sql[] = "CREATE TABLE {$customer_tasks} (
+			id                  BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			customer_id         BIGINT(20) UNSIGNED  NOT NULL,
+			assigned_to         BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0 COMMENT 'WP user ID',
+			title               VARCHAR(500)         NOT NULL DEFAULT '',
+			description         TEXT                          DEFAULT NULL,
+			status              VARCHAR(30)          NOT NULL DEFAULT 'pending' COMMENT 'pending|in_progress|completed|cancelled',
+			priority            VARCHAR(20)          NOT NULL DEFAULT 'medium'  COMMENT 'low|medium|high|urgent',
+			due_at              DATETIME                      DEFAULT NULL,
+			completed_at        DATETIME                      DEFAULT NULL,
+			is_recurring        TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0,
+			recurrence_config   LONGTEXT                      DEFAULT NULL COMMENT 'JSON: interval, day_of_week, etc.',
+			reminder_sent       TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0,
+			created_by          BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			created_at          DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at          DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY         (id),
+			KEY idx_customer_id (customer_id),
+			KEY idx_assigned_to (assigned_to),
+			KEY idx_status      (status),
+			KEY idx_due_at      (due_at),
+			KEY idx_priority    (priority)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// Customer activity log
+		$customer_activity = $wpdb->prefix . 'tsh_wa_customer_activity';
+		$sql[] = "CREATE TABLE {$customer_activity} (
+			id               BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			customer_id      BIGINT(20) UNSIGNED  NOT NULL,
+			type             VARCHAR(50)          NOT NULL DEFAULT 'note',
+			subject          VARCHAR(200)         NOT NULL DEFAULT '',
+			description      TEXT                          DEFAULT NULL,
+			data             LONGTEXT                      DEFAULT NULL COMMENT 'JSON extra context',
+			reference_type   VARCHAR(50)                   DEFAULT NULL COMMENT 'order|message|campaign|note|task',
+			reference_id     BIGINT(20) UNSIGNED           DEFAULT NULL,
+			created_by       BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0 COMMENT '0 = system',
+			created_at       DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY      (id),
+			KEY idx_customer_id  (customer_id),
+			KEY idx_type         (type),
+			KEY idx_created_at   (created_at),
+			KEY idx_reference    (reference_type, reference_id)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// Dynamic segments
+		$customer_segments = $wpdb->prefix . 'tsh_wa_customer_segments';
+		$sql[] = "CREATE TABLE {$customer_segments} (
+			id             BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			name           VARCHAR(200)         NOT NULL DEFAULT '',
+			description    TEXT                          DEFAULT NULL,
+			rules          LONGTEXT             NOT NULL,
+			match_count    BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			auto_refresh   TINYINT(1) UNSIGNED  NOT NULL DEFAULT 1,
+			last_computed  DATETIME                      DEFAULT NULL,
+			created_by     BIGINT(20) UNSIGNED  NOT NULL DEFAULT 0,
+			created_at     DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at     DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY    (id),
+			KEY idx_name   (name(100))
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// Tag definitions
+		$customer_tags = $wpdb->prefix . 'tsh_wa_customer_tags';
+		$sql[] = "CREATE TABLE {$customer_tags} (
+			id           BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			name         VARCHAR(100)         NOT NULL DEFAULT '',
+			color        VARCHAR(20)          NOT NULL DEFAULT '#6b7280',
+			type         VARCHAR(30)          NOT NULL DEFAULT 'manual' COMMENT 'manual|auto|workflow|campaign',
+			description  TEXT                          DEFAULT NULL,
+			usage_count  INT(10) UNSIGNED     NOT NULL DEFAULT 0,
+			created_at   DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY  (id),
+			KEY idx_name (name),
+			KEY idx_type (type)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// Score snapshots
+		$customer_scores = $wpdb->prefix . 'tsh_wa_customer_scores';
+		$sql[] = "CREATE TABLE {$customer_scores} (
+			id                BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			customer_id       BIGINT(20) UNSIGNED  NOT NULL,
+			engagement_score  DECIMAL(5,2)         NOT NULL DEFAULT 0,
+			purchase_score    DECIMAL(5,2)         NOT NULL DEFAULT 0,
+			support_score     DECIMAL(5,2)         NOT NULL DEFAULT 0,
+			marketing_score   DECIMAL(5,2)         NOT NULL DEFAULT 0,
+			health_score      DECIMAL(5,2)         NOT NULL DEFAULT 0,
+			rfm_score         VARCHAR(10)          NOT NULL DEFAULT '111',
+			computed_at       DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY       (id),
+			KEY idx_customer_id (customer_id),
+			KEY idx_health      (health_score),
+			KEY idx_computed_at (computed_at)
+		) ENGINE=InnoDB {$charset_collate};";
+
+		// Custom field definitions
+		$customer_custom_fields = $wpdb->prefix . 'tsh_wa_customer_custom_fields';
+		$sql[] = "CREATE TABLE {$customer_custom_fields} (
+			id            BIGINT(20) UNSIGNED  NOT NULL AUTO_INCREMENT,
+			field_key     VARCHAR(100)         NOT NULL DEFAULT '',
+			field_label   VARCHAR(200)         NOT NULL DEFAULT '',
+			field_type    VARCHAR(30)          NOT NULL DEFAULT 'text' COMMENT 'text|textarea|number|checkbox|date|select|radio|url|email',
+			options       LONGTEXT                      DEFAULT NULL COMMENT 'JSON: options for select/radio fields',
+			is_required   TINYINT(1) UNSIGNED  NOT NULL DEFAULT 0,
+			sort_order    INT(10)              NOT NULL DEFAULT 0,
+			created_at    DATETIME             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY   (id),
+			UNIQUE KEY    uk_field_key (field_key)
 		) ENGINE=InnoDB {$charset_collate};";
 
 		foreach ( $sql as $statement ) {

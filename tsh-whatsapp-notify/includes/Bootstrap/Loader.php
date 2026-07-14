@@ -150,6 +150,25 @@ final class Loader {
 		$this->components['automation'] = AutomationEngine::get_instance();
 		$this->components['automation']->register_hooks();
 
+		// Phase 9: Customer CRM — activity hooks + lifecycle cron + reminders.
+		if ( get_option( 'tsh_wa_crm_settings' ) !== false ) {
+			$crm_repo     = new \TSH\WhatsAppNotify\CRM\CustomerRepository();
+			$crm_activity = new \TSH\WhatsAppNotify\CRM\CustomerActivity( $crm_repo );
+			$crm_activity->register_hooks();
+
+			$crm_scoring   = new \TSH\WhatsAppNotify\CRM\CustomerScoring( $crm_repo );
+			$crm_lifecycle = new \TSH\WhatsAppNotify\CRM\CustomerLifecycle( $crm_repo, $crm_activity );
+			$crm_lifecycle->register_hooks();
+
+			$crm_tasks    = new \TSH\WhatsAppNotify\CRM\CustomerTasks( $crm_repo, $crm_activity );
+			$crm_reminder = new \TSH\WhatsAppNotify\CRM\CustomerReminder( $crm_repo, $crm_tasks );
+			$crm_reminder->register_hooks();
+
+			$this->components['crm_activity']  = $crm_activity;
+			$this->components['crm_lifecycle'] = $crm_lifecycle;
+			$this->components['crm_reminder']  = $crm_reminder;
+		}
+
 		// Phase 8: Marketing / Broadcast Engine — cron hooks.
 		$repo      = new CampaignRepository();
 		$validator = new CampaignValidator();
